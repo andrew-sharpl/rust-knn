@@ -1,0 +1,12 @@
+[package]
+name = "knn"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "knn"
+# "rlib" = normal Rust library (for cargo test, examples, benchmarks)
+# "cdylib" = C-compatible dynamic library (required for PyO3 / maturin to load into Python)
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
