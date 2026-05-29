@@ -95,10 +95,11 @@ impl KnnClassifier {
 ///   is more idiomatic because it accepts `&Vec`, array references, and
 ///   any other contiguous data. (TRPL Ch. 4.3 — Slices.)
 fn euclidean_distance(a: &[f64], b: &[f64]) -> f64 {
-    // TODO: assert_eq!(a.len(), b.len()) or return an error?
-    // Then compute sqrt(sum((a_i - b_i)^2)).
-    // Use f64::sqrt and iterator methods (map, sum).
-    todo!("Compute Euclidean distance")
+    assert_eq!(a.len(), b.len(), "points must be of the same dimension");
+    a.iter().zip(b.iter())
+        .map(|(&x, &y)| (x - y).powi(2))
+        .sum::<f64>()
+        .sqrt()
 }
 
 /// Given the labels of the k nearest neighbors, return the most common one.
@@ -127,23 +128,90 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "k must be positive")]
     fn test_new_knn_zero_k() {
         KnnClassifier::new(0);
     }
 
     #[test]
-    #[should_panic]
+    fn test_successful_fit() {
+        let mut model = KnnClassifier::new(2);
+        model.fit(
+            vec![vec![0.0, 0.0], vec![1.0, 1.0]],
+            vec![0, 1],
+        );
+        assert_eq!(model.data.len(), 2);
+        assert_eq!(model.data, vec![vec![0.0, 0.0], vec![1.0, 1.0]]);
+        assert_eq!(model.labels.len(), 2);
+        assert_eq!(model.labels, vec![0, 1]);
+
+    }
+
+    #[test]
+    #[should_panic(expected = "same length")]
     fn test_mismatched_lengths() {
         let mut model = KnnClassifier::new(1);
         model.fit(vec![vec![0.0]], vec![0, 1]);
     }
+    
+    #[test]
+    fn test_k_equals_data_len() {
+        let mut model = KnnClassifier::new(2);
+        model.fit(
+            vec![vec![0.0], vec![1.0]],
+            vec![0, 1],
+        ); // should not panic
+    }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "larger than size")]
     fn test_k_larger_than_data() {
         let mut model = KnnClassifier::new(5);
         model.fit(vec![vec![0.0]], vec![0]);
+    }
+
+
+    #[test]
+    #[should_panic(expected="same dimension")]
+    fn test_euclidean_dist_diff_dimensions() {
+        let x = vec![1.0, 0.0];
+        let y = vec![0.0];
+        euclidean_distance(&x, &y);
+    }
+
+    #[test]
+    fn test_euclidean_dist_of_zero() {
+        let x = vec![1.0, 1.0, 1.0];
+        let y = vec![1.0, 1.0, 1.0];
+        assert_eq!(euclidean_distance(&x, &y), 0.0);
+    }
+
+    #[test]
+    fn test_euclidean_dist_3_4_5() {
+        // Classic right-triangle test: sqrt(3^2 + 4^2) = 5
+        assert_eq!(euclidean_distance(&[0.0, 0.0], &[3.0, 4.0]), 5.0);
+    }
+
+    #[test]
+    fn test_euclidean_dist_1d() {
+        assert_eq!(euclidean_distance(&[0.0], &[5.0]), 5.0);
+        assert_eq!(euclidean_distance(&[3.0], &[8.0]), 5.0);
+    }
+
+    #[test]
+    fn test_euclidean_dist_negative_coords() {
+        // (-3, -4) to (0, 0) should also be 5
+        assert_eq!(euclidean_distance(&[-3.0, -4.0], &[0.0, 0.0]), 5.0);
+        // (-1, 2) to (2, 6) -> sqrt(3^2 + 4^2) = 5
+        assert_eq!(euclidean_distance(&[-1.0, 2.0], &[2.0, 6.0]), 5.0);
+    }
+
+    #[test]
+    fn test_euclidean_dist_3d() {
+        // 1-2-3 sqrt(14) triangle in 3D
+        let expected = (14.0_f64).sqrt();
+        let actual = euclidean_distance(&[0.0, 0.0, 0.0], &[1.0, 2.0, 3.0]);
+        assert!((actual - expected).abs() < 1e-12, "expected {}, got {}", expected, actual);
     }
 
 }
