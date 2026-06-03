@@ -10,3 +10,6 @@ name = "knn"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
+pyo3 = {version = "0.23", features=["extension-module"]}
+numpy = "0.23"
+ndarray = "0.16"

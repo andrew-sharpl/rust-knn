@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 pub mod distance;
+pub mod python;
 
 /// Brute-force KNN classifier.
 ///
@@ -83,7 +84,8 @@ impl KnnClassifier {
                 distances.push((dist, label));
             }
 
-            distances.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let kth = self.k;
+            distances.select_nth_unstable_by(kth -1, |a, b| a.0.total_cmp(&b.0));
 
             let neighbour_labels: Vec<usize> = distances[..self.k]
                 .iter()
