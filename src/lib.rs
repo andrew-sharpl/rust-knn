@@ -31,7 +31,8 @@ pub mod python;
 ///   classification indices. We’ll generalize once the Rust basics feel natural.
 pub struct KnnClassifier {
     // TODO (you will write this): training data and labels, plus k.
-    data: Vec<Vec<f64>>,
+    data: Vec<f64>,
+    dim: usize,
     labels: Vec<usize>,
     k: usize,
 }
@@ -44,6 +45,7 @@ impl KnnClassifier {
         assert!(k > 0, "k must be positive");
         Self {
             data: Vec::new(),
+            dim: 0,
             labels: Vec::new(),
             k,
         }
@@ -56,10 +58,25 @@ impl KnnClassifier {
     /// That is Rust’s default: passing a Vec by value transfers ownership.
     /// (TRPL Ch. 4.1 — Ownership.)
     pub fn fit(&mut self, data: Vec<Vec<f64>>, labels: Vec<usize>) {
-        // TODO: store the data.
-        assert_eq!(data.len(), labels.len(), "data and labels must have the same length");
-        assert!(self.k <= data.len(), "k ({}) cannot be larger than size of training set ({})", self.k, data.len());
-        self.data = data;
+        assert_eq!(
+            data.len(),
+            labels.len(),
+            "data and labels must have the same length"
+        );
+        assert!(
+            self.k <= data.len(),
+            "k ({}) cannot be larger than size of training set ({})",
+            self.k,
+            data.len()
+        );
+
+        // Flatten into a single Vec<f64>
+        self.dim = data[0].len();
+        self.data = Vec::with_capacity(data.len() * self.dim);
+        for point in data {
+            assert_eq!(point.len(), self.dim);
+            self.data.extend(point);
+        }
         self.labels = labels;
     }
 
@@ -76,16 +93,17 @@ impl KnnClassifier {
     /// Returns a `Vec<usize>` of predicted labels, one per query.
     pub fn predict(&self, queries: &[Vec<f64>]) -> Vec<usize> {
         let mut predictions: Vec<usize> = Vec::with_capacity(queries.len());
-        
+
         for query in queries {
-            let mut distances: Vec<(f64, usize)> = Vec::with_capacity(self.data.len());
-            for (point, &label) in self.data.iter().zip(self.labels.iter()) {
-                let dist = euclidean_distance(query, point);
-                distances.push((dist, label));
+            let mut distances: Vec<(f64, usize)> = Vec::with_capacity(self.labels.len());
+
+            for i in 0..self.labels.len() {
+                let point = &self.data[i * self.dim..(i + 1) * self.dim];
+                let dist = euclidean_distance(point, query);
+                distances.push((dist, self.labels[i]));
             }
 
-            let kth = self.k;
-            distances.select_nth_unstable_by(kth -1, |a, b| a.0.total_cmp(&b.0));
+            distances.select_nth_unstable_by(self.k - 1, |a, b| a.0.total_cmp(&b.0));
 
             let neighbour_labels: Vec<usize> = distances[..self.k]
                 .iter()
@@ -93,6 +111,7 @@ impl KnnClassifier {
                 .collect();
 
             predictions.push(majority_vote(&neighbour_labels));
+
         }
         predictions
     }
@@ -111,7 +130,8 @@ impl KnnClassifier {
 ///   any other contiguous data. (TRPL Ch. 4.3 — Slices.)
 fn euclidean_distance(a: &[f64], b: &[f64]) -> f64 {
     assert_eq!(a.len(), b.len(), "points must be of the same dimension");
-    a.iter().zip(b.iter())
+    a.iter()
+        .zip(b.iter())
         .map(|(&x, &y)| (x - y).powi(2))
         .sum::<f64>()
         .sqrt()
@@ -164,15 +184,9 @@ mod tests {
     #[test]
     fn test_successful_fit() {
         let mut model = KnnClassifier::new(2);
-        model.fit(
-            vec![vec![0.0, 0.0], vec![1.0, 1.0]],
-            vec![0, 1],
-        );
-        assert_eq!(model.data.len(), 2);
-        assert_eq!(model.data, vec![vec![0.0, 0.0], vec![1.0, 1.0]]);
-        assert_eq!(model.labels.len(), 2);
+        model.fit(vec![vec![0.0, 0.0], vec![1.0, 1.0]], vec![0, 1]);
+        assert_eq!(model.data, vec![0.0, 0.0, 1.0, 1.0]);
         assert_eq!(model.labels, vec![0, 1]);
-
     }
 
     #[test]
@@ -181,14 +195,11 @@ mod tests {
         let mut model = KnnClassifier::new(1);
         model.fit(vec![vec![0.0]], vec![0, 1]);
     }
-    
+
     #[test]
     fn test_k_equals_data_len() {
         let mut model = KnnClassifier::new(2);
-        model.fit(
-            vec![vec![0.0], vec![1.0]],
-            vec![0, 1],
-        ); // should not panic
+        model.fit(vec![vec![0.0], vec![1.0]], vec![0, 1]); // should not panic
     }
 
     #[test]
@@ -198,9 +209,8 @@ mod tests {
         model.fit(vec![vec![0.0]], vec![0]);
     }
 
-
     #[test]
-    #[should_panic(expected="same dimension")]
+    #[should_panic(expected = "same dimension")]
     fn test_euclidean_dist_diff_dimensions() {
         let x = vec![1.0, 0.0];
         let y = vec![0.0];
@@ -236,7 +246,12 @@ mod tests {
     fn test_euclidean_dist_3d() {
         let expected = (14.0_f64).sqrt();
         let actual = euclidean_distance(&[0.0, 0.0, 0.0], &[1.0, 2.0, 3.0]);
-        assert!((actual - expected).abs() < 1e-12, "expected {}, got {}", expected, actual);
+        assert!(
+            (actual - expected).abs() < 1e-12,
+            "expected {}, got {}",
+            expected,
+            actual
+        );
     }
 
     #[test]
@@ -258,5 +273,4 @@ mod tests {
     fn test_majority_vote_tie() {
         assert_eq!(majority_vote(&[1, 0, 2]), 0);
     }
-
 }
