@@ -4,6 +4,7 @@
 //! use nested Vecs (easy to reason about, if not optimal), and defer
 //! traits/parallelism/PyO3 to later weeks.
 
+use std::collections::HashMap;
 pub mod distance;
 
 /// Brute-force KNN classifier.
@@ -29,7 +30,6 @@ pub mod distance;
 ///   classification indices. We’ll generalize once the Rust basics feel natural.
 pub struct KnnClassifier {
     // TODO (you will write this): training data and labels, plus k.
-    // Hint: `data: Vec<Vec<f64>>`, `labels: Vec<usize>`, `k: usize`
     data: Vec<Vec<f64>>,
     labels: Vec<usize>,
     k: usize,
@@ -74,12 +74,25 @@ impl KnnClassifier {
     ///
     /// Returns a `Vec<usize>` of predicted labels, one per query.
     pub fn predict(&self, queries: &[Vec<f64>]) -> Vec<usize> {
-        // TODO: for each query:
-        //   1. Compute Euclidean distance to every training point.
-        //   2. Find the k smallest distances (naive sort or partial sort).
-        //   3. Take a majority vote of their labels.
-        // Consider: where does allocation happen? Can you reuse a buffer?
-        todo!("Implement brute-force prediction")
+        let mut predictions: Vec<usize> = Vec::with_capacity(queries.len());
+        
+        for query in queries {
+            let mut distances: Vec<(f64, usize)> = Vec::with_capacity(self.data.len());
+            for (point, &label) in self.data.iter().zip(self.labels.iter()) {
+                let dist = euclidean_distance(query, point);
+                distances.push((dist, label));
+            }
+
+            distances.sort_by(|a, b| a.0.total_cmp(&b.0));
+
+            let neighbour_labels: Vec<usize> = distances[..self.k]
+                .iter()
+                .map(|(_, label)| *label)
+                .collect();
+
+            predictions.push(majority_vote(&neighbour_labels));
+        }
+        predictions
     }
 }
 
@@ -109,10 +122,23 @@ fn euclidean_distance(a: &[f64], b: &[f64]) -> f64 {
 ///   (closer neighbors count more), which is why I’ve pulled it into its own helper
 ///   rather than inlining it inside `predict`.
 fn majority_vote(neighbor_labels: &[usize]) -> usize {
-    // TODO: count frequencies (HashMap<usize, usize>? or sort + run-length count?)
-    // and return the label with the highest count.
-    // Tie-breaking: what if two labels have the same count?
-    todo!("Return the most common label")
+    let mut counts = HashMap::new();
+
+    for &label in neighbor_labels {
+        *counts.entry(label).or_insert(0) += 1;
+    }
+
+    let mut best_label = neighbor_labels[0];
+    let mut best_count = 0;
+
+    for (&label, &count) in &counts {
+        if count > best_count || (count == best_count && label < best_label) {
+            best_count = count;
+            best_label = label;
+        }
+    }
+
+    best_label
 }
 
 #[cfg(test)]
@@ -200,18 +226,35 @@ mod tests {
 
     #[test]
     fn test_euclidean_dist_negative_coords() {
-        // (-3, -4) to (0, 0) should also be 5
         assert_eq!(euclidean_distance(&[-3.0, -4.0], &[0.0, 0.0]), 5.0);
-        // (-1, 2) to (2, 6) -> sqrt(3^2 + 4^2) = 5
         assert_eq!(euclidean_distance(&[-1.0, 2.0], &[2.0, 6.0]), 5.0);
     }
 
     #[test]
     fn test_euclidean_dist_3d() {
-        // 1-2-3 sqrt(14) triangle in 3D
         let expected = (14.0_f64).sqrt();
         let actual = euclidean_distance(&[0.0, 0.0, 0.0], &[1.0, 2.0, 3.0]);
         assert!((actual - expected).abs() < 1e-12, "expected {}, got {}", expected, actual);
+    }
+
+    #[test]
+    fn test_majority_vote_simple() {
+        assert_eq!(majority_vote(&[0, 0, 1]), 0);
+    }
+
+    #[test]
+    fn test_majority_vote_unanimous() {
+        assert_eq!(majority_vote(&[1, 1, 1]), 1);
+    }
+
+    #[test]
+    fn test_majority_vote_single() {
+        assert_eq!(majority_vote(&[5]), 5);
+    }
+
+    #[test]
+    fn test_majority_vote_tie() {
+        assert_eq!(majority_vote(&[1, 0, 2]), 0);
     }
 
 }
