@@ -1,13 +1,16 @@
+"""
+End-to-end smoke tests for the Rust KNN Python bindings.
+"""
+
 import numpy as np
 import knn
 
-# Test 1: Basic 2D dataset (same as your Rust integration test)
+# Test 1: Basic 2D dataset
 model = knn.KnnClassifier(1)
 model.fit(
     np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 10.0]]),
-    np.array([0, 0, 1])
+    np.array([0, 0, 1]),
 )
-
 predictions = model.predict(np.array([[0.1, 0.0], [0.0, 9.0]]))
 assert predictions == [0, 1], f"Expected [0, 1], got {predictions}"
 print("Test 1 passed: basic 2D prediction")
@@ -16,7 +19,7 @@ print("Test 1 passed: basic 2D prediction")
 model2 = knn.KnnClassifier(2)
 model2.fit(
     np.array([[0.0], [1.0], [10.0], [11.0]]),
-    np.array([0, 0, 1, 1])
+    np.array([0, 0, 1, 1]),
 )
 predictions2 = model2.predict(np.array([[0.4], [10.4]]))
 assert predictions2 == [0, 1], f"Expected [0, 1], got {predictions2}"

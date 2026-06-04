@@ -1,36 +1,18 @@
 //! A pure-Rust brute-force k-nearest neighbors classifier.
 //!
-//! This is intentionally simple: we own our data (no lifetimes yet),
-//! use nested Vecs (easy to reason about, if not optimal), and defer
-//! traits/parallelism/PyO3 to later weeks.
+//! Training data is stored in a single flat `Vec<f64>` for cache-friendly
+//! distance computation. Parallel prediction is supported via `rayon`.
 
+use rayon::prelude::*;
 use std::collections::HashMap;
+
 pub mod distance;
 pub mod python;
 
 /// Brute-force KNN classifier.
 ///
-/// **Why `Vec<Vec<f64>>` for data?**
-/// - *Pros*: Pure standard-library Rust. Each point is a self-contained `Vec<f64>`,
-///   which mirrors how you might store a list of lists in Python.
-/// - *Cons*: Each inner `Vec` is a separate heap allocation. During distance computation
-///   the CPU chases pointers and gets poor cache locality. Also hard to SIMD.
-/// - *The plan*: In Week 2–3 we’ll migrate to a flat `Vec<f64>` with a known `dim`,
-///   then to `ndarray` or directly to NumPy-backed buffers via PyO3.
-///
-/// **Why owned data instead of borrowed slices?**
-/// - If we borrowed, the struct would need a lifetime parameter: `KnnClassifier<'a>`.
-///   That lifetime would infect every function signature and every call site.
-/// - For a first Rust project, lifetimes-on-structs are a common stumbling block.
-///   By owning the data (`Vec` moves into us), we side-step that entirely.
-///   (TRPL Ch. 10 covers lifetimes; try applying them to this struct later as an exercise.)
-///
-/// **Why `usize` for labels?**
-/// - We could make `KnnClassifier` generic over `Label: Clone + Eq + Hash`, but
-///   trait bounds on structs add cognitive load in Week 1. `usize` covers
-///   classification indices. We’ll generalize once the Rust basics feel natural.
+/// Data is stored in row-major layout: `[p0f0, p0f1, p1f0, p1f1, ...]`.
 pub struct KnnClassifier {
-    // TODO (you will write this): training data and labels, plus k.
     data: Vec<f64>,
     dim: usize,
     labels: Vec<usize>,
@@ -40,7 +22,7 @@ pub struct KnnClassifier {
 impl KnnClassifier {
     /// Create a new classifier with the given `k`.
     ///
-    /// No data is stored yet; call `fit` next.
+    /// Panics if `k == 0`.
     pub fn new(k: usize) -> Self {
         assert!(k > 0, "k must be positive");
         Self {
@@ -51,12 +33,10 @@ impl KnnClassifier {
         }
     }
 
-    /// Store training data and labels.
+    /// Fit on data provided as a vector of rows.
     ///
-    /// **Ownership note:** `data` and `labels` are *moved* into this function.
-    /// After `fit` returns, the caller no longer owns those Vecs — this struct does.
-    /// That is Rust’s default: passing a Vec by value transfers ownership.
-    /// (TRPL Ch. 4.1 — Ownership.)
+    /// Each inner `Vec` is one sample. This method flattens internally
+    /// into a contiguous buffer.
     pub fn fit(&mut self, data: Vec<Vec<f64>>, labels: Vec<usize>) {
         assert_eq!(
             data.len(),
@@ -65,32 +45,69 @@ impl KnnClassifier {
         );
         assert!(
             self.k <= data.len(),
-            "k ({}) cannot be larger than size of training set ({})",
+            "k ({}) cannot be larger than training set size ({ })",
             self.k,
             data.len()
         );
 
-        // Flatten into a single Vec<f64>
         self.dim = data[0].len();
         self.data = Vec::with_capacity(data.len() * self.dim);
         for point in data {
-            assert_eq!(point.len(), self.dim);
+            assert_eq!(
+                point.len(),
+                self.dim,
+                "all rows must have the same dimension"
+            );
             self.data.extend(point);
         }
         self.labels = labels;
     }
 
-    /// Predict the class label for each query point.
+    /// Fit on data already in flat row-major layout.
     ///
-    /// **Why `&[Vec<f64>]` for `queries`?**
-    /// - We only need to *read* the query points, not own them.
-    /// - `&[Vec<f64>]` is a borrowed slice of owned rows. This is slightly asymmetric
-    ///   (we own training data but borrow queries), which is fine: queries come from
-    ///   the caller and might be reused elsewhere.
-    /// - Alternative: `&[&[f64]]` would borrow everything, but then callers must
-    ///   construct slices-of-slices. We’ll revisit when we switch to flat arrays.
+    /// `data.len()` must equal `n_points * dim`.
+    pub fn fit_flat(&mut self, data: Vec<f64>, dim: usize, labels: Vec<usize>) {
+        assert_eq!(data.len() % dim, 0);
+        let n_points = data.len() / dim;
+        assert_eq!(n_points, labels.len());
+        assert!(self.k <= n_points);
+        self.data = data;
+        self.dim = dim;
+        self.labels = labels;
+    }
+
+    /// Predict labels for queries in flat row-major layout.
     ///
-    /// Returns a `Vec<usize>` of predicted labels, one per query.
+    /// Uses `rayon` to parallelize across queries.
+    pub fn predict_flat(&self, queries: &[f64], n_queries: usize, dim: usize) -> Vec<usize> {
+        assert_eq!(queries.len(), n_queries * dim);
+        assert_eq!(
+            dim, self.dim,
+            "query dimension must match training data dimension"
+        );
+
+        queries
+            .par_chunks(dim)
+            .map(|query| {
+                let mut distances: Vec<(f64, usize)> = Vec::with_capacity(self.labels.len());
+                for i in 0..self.labels.len() {
+                    let point = &self.data[i * self.dim..(i + 1) * self.dim];
+                    distances.push((euclidean_distance(point, query), self.labels[i]));
+                }
+
+                distances.select_nth_unstable_by(self.k - 1, |a, b| a.0.total_cmp(&b.0));
+
+                let top_labels: Vec<usize> = distances[..self.k]
+                    .iter()
+                    .map(|(_, label)| *label)
+                    .collect();
+
+                majority_vote(&top_labels)
+            })
+            .collect()
+    }
+
+    /// Predict labels for queries provided as a vector of rows.
     pub fn predict(&self, queries: &[Vec<f64>]) -> Vec<usize> {
         let mut predictions: Vec<usize> = Vec::with_capacity(queries.len());
 
@@ -111,23 +128,12 @@ impl KnnClassifier {
                 .collect();
 
             predictions.push(majority_vote(&neighbour_labels));
-
         }
         predictions
     }
 }
 
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
 /// Compute Euclidean distance between two equal-length vectors.
-///
-/// **Why slices (`&[f64]`) here?**
-/// - We only need read access, and slices are the most flexible/readable
-///   one-dimensional view in Rust. `&Vec<f64>` would also work, but `&[f64]`
-///   is more idiomatic because it accepts `&Vec`, array references, and
-///   any other contiguous data. (TRPL Ch. 4.3 — Slices.)
 fn euclidean_distance(a: &[f64], b: &[f64]) -> f64 {
     assert_eq!(a.len(), b.len(), "points must be of the same dimension");
     a.iter()
@@ -139,10 +145,7 @@ fn euclidean_distance(a: &[f64], b: &[f64]) -> f64 {
 
 /// Given the labels of the k nearest neighbors, return the most common one.
 ///
-/// **Design choice:**
-/// - This is a simple brute-force vote. In Week 4 we’ll switch to a weighted vote
-///   (closer neighbors count more), which is why I’ve pulled it into its own helper
-///   rather than inlining it inside `predict`.
+/// Ties are broken by choosing the smallest label.
 fn majority_vote(neighbor_labels: &[usize]) -> usize {
     let mut counts = HashMap::new();
 
@@ -199,11 +202,11 @@ mod tests {
     #[test]
     fn test_k_equals_data_len() {
         let mut model = KnnClassifier::new(2);
-        model.fit(vec![vec![0.0], vec![1.0]], vec![0, 1]); // should not panic
+        model.fit(vec![vec![0.0], vec![1.0]], vec![0, 1]);
     }
 
     #[test]
-    #[should_panic(expected = "larger than size")]
+    #[should_panic(expected = "cannot be larger than training set size")]
     fn test_k_larger_than_data() {
         let mut model = KnnClassifier::new(5);
         model.fit(vec![vec![0.0]], vec![0]);
@@ -226,7 +229,6 @@ mod tests {
 
     #[test]
     fn test_euclidean_dist_3_4_5() {
-        // Classic right-triangle test: sqrt(3^2 + 4^2) = 5
         assert_eq!(euclidean_distance(&[0.0, 0.0], &[3.0, 4.0]), 5.0);
     }
 

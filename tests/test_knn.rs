@@ -1,18 +1,3 @@
-// Integration test for knn classifier.
-//
-// These tests import the crate as an external user would:
-//   `use knn::KnnClassifier;`
-//
-// Because they’re in tests/, they cannot access private helpers like
-// `euclidean_distance` or `majority_vote`. That’s intentional: it tests
-// the public contract.
-//
-// **Rust testing basics (TRPL Ch. 11):**
-// - `#[test]` marks a function as a test.
-// - `assert_eq!(left, right)` panics on mismatch.
-// - Run with: `cargo test`
-
-use std::vec;
 use knn::KnnClassifier;
 
 #[test]
@@ -25,7 +10,6 @@ fn test_knn_basic() {
 
     let predictions = model.predict(&[vec![0.1, 0.0]]);
     assert_eq!(predictions, vec![0]);
-
 
     let predictions = model.predict(&[vec![0.0, 9.0]]);
     assert_eq!(predictions, vec![1]);

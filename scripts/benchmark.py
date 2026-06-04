@@ -1,3 +1,10 @@
+"""
+Benchmark: sklearn brute-force KNN vs. Rust KNN (via PyO3).
+
+Generates a synthetic classification dataset and times prediction for both
+implementations, asserting that results agree.
+"""
+
 import time
 import numpy as np
 from sklearn.neighbors import KNeighborsClassifier

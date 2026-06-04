@@ -5,11 +5,10 @@ edition = "2024"
 
 [lib]
 name = "knn"
-# "rlib" = normal Rust library (for cargo test, examples, benchmarks)
-# "cdylib" = C-compatible dynamic library (required for PyO3 / maturin to load into Python)
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-pyo3 = {version = "0.23", features=["extension-module"]}
+pyo3 = { version = "0.23", features = ["extension-module"] }
 numpy = "0.23"
 ndarray = "0.16"
+rayon = "1.10"
