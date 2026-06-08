@@ -1,15 +1,23 @@
 # run everything
 dev:
-    cargo test --lib && uv run maturin develop && uv run python scripts/benchmark.py
+    cargo test --lib && uv tool run maturin develop && uv run python scripts/benchmark.py
 
-# just tests
+# rust tests
 test:
-    cargo test --lib
+    cargo test
 
-# just benchmark
+# rust benchmarks
 bench:
-    uv run maturin develop && uv run python scripts/benchmark.py
+    cargo bench
 
-# build without running
+# build python module
 build:
-    cargo build && uv run maturin develop
+    uv tool run maturin develop
+
+# python tests
+pytest:
+    uv tool run maturin develop && uv run pytest tests/ -v
+
+# python benchmarks
+bench-py:
+    uv tool run maturin develop && uv run python scripts/benchmark.py
