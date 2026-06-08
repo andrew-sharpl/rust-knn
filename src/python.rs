@@ -11,8 +11,19 @@ use pyo3::prelude::*;
 #[pymodule]
 fn knn(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<KnnClassifierPy>()?;
+    m.add_class::<MetricPy>()?;
     Ok(())
 }
+
+/// Python-visible distance metric enum.
+#[pyclass(name = "Metric", eq, eq_int)]
+#[derive(Clone, Copy, PartialEq)]
+enum MetricPy {
+    Euclidean,
+    Manhattan,
+    Cosine,
+}
+
 
 /// Python wrapper around the Rust `KnnClassifier`.
 #[pyclass(name = "KnnClassifier")]
@@ -24,9 +35,18 @@ struct KnnClassifierPy {
 impl KnnClassifierPy {
     /// Create a new classifier with `k` neighbors.
     #[new]
-    fn new(k: usize) -> Self {
+    #[pyo3(signature = (k, metric=None))]
+    fn new(k: usize, metric: Option<MetricPy>) -> Self {
+        let metric = match metric {
+            Some(m) => match m {
+                MetricPy::Euclidean => crate::distance::Metric::Euclidean,
+                MetricPy::Manhattan => crate::distance::Metric::Manhattan,
+                MetricPy::Cosine => crate::distance::Metric::Cosine,
+            },
+            None => crate::distance::Metric::Euclidean,
+        };
         Self {
-            inner: crate::KnnClassifier::new(k),
+            inner: crate::KnnClassifier::with_metric(k, metric),
         }
     }
 

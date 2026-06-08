@@ -3,6 +3,7 @@
 //! Training data is stored in a single flat `Vec<f64>` for cache-friendly
 //! distance computation. Parallel prediction is supported via `rayon`.
 
+use distance::Metric;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
@@ -16,13 +17,14 @@ pub struct KnnClassifier {
     data: Vec<f64>,
     dim: usize,
     labels: Vec<usize>,
-    k: usize,
+    pub k: usize,
+    pub metric: Metric,
 }
 
 impl KnnClassifier {
     /// Create a new classifier with the given `k`.
     ///
-    /// Panics if `k == 0`.
+    /// Panics if `k == 0`. Default distance metric is euclidean
     pub fn new(k: usize) -> Self {
         assert!(k > 0, "k must be positive");
         Self {
@@ -30,6 +32,18 @@ impl KnnClassifier {
             dim: 0,
             labels: Vec::new(),
             k,
+            metric: Metric::Euclidean,
+        }
+    }
+
+    pub fn with_metric(k: usize, metric: Metric) -> Self {
+        assert!(k > 0, "k must be positive");
+        Self {
+            data: Vec::new(),
+            dim: 0,
+            labels: Vec::new(),
+            k,
+            metric,
         }
     }
 
@@ -71,7 +85,7 @@ impl KnnClassifier {
                 let mut distances: Vec<(f64, usize)> = Vec::with_capacity(self.labels.len());
                 for i in 0..self.labels.len() {
                     let point = &self.data[i * self.dim..(i + 1) * self.dim];
-                    distances.push((euclidean_distance(point, query), self.labels[i]));
+                    distances.push((self.metric.distance(point, query), self.labels[i]));
                 }
 
                 distances.select_nth_unstable_by(self.k - 1, |a, b| a.0.total_cmp(&b.0));
@@ -98,16 +112,6 @@ fn rows_to_flat(rows: &[Vec<f64>]) -> (Vec<f64>, usize) {
         flat.extend(row);
     }
     (flat, dim)
-}
-
-/// Compute Euclidean distance between two equal-length vectors.
-fn euclidean_distance(a: &[f64], b: &[f64]) -> f64 {
-    assert_eq!(a.len(), b.len(), "points must be of the same dimension");
-    a.iter()
-        .zip(b.iter())
-        .map(|(&x, &y)| (x - y).powi(2))
-        .sum::<f64>()
-        .sqrt()
 }
 
 /// Given the labels of the k nearest neighbors, return the most common one.
@@ -185,37 +189,37 @@ mod tests {
     fn test_euclidean_dist_diff_dimensions() {
         let x = vec![1.0, 0.0];
         let y = vec![0.0];
-        euclidean_distance(&x, &y);
+        Metric::Euclidean.distance(&x, &y);
     }
 
     #[test]
     fn test_euclidean_dist_of_zero() {
         let x = vec![1.0, 1.0, 1.0];
         let y = vec![1.0, 1.0, 1.0];
-        assert_eq!(euclidean_distance(&x, &y), 0.0);
+        assert_eq!(Metric::Euclidean.distance(&x, &y), 0.0);
     }
 
     #[test]
     fn test_euclidean_dist_3_4_5() {
-        assert_eq!(euclidean_distance(&[0.0, 0.0], &[3.0, 4.0]), 5.0);
+        assert_eq!(Metric::Euclidean.distance(&[0.0, 0.0], &[3.0, 4.0]), 5.0);
     }
 
     #[test]
     fn test_euclidean_dist_1d() {
-        assert_eq!(euclidean_distance(&[0.0], &[5.0]), 5.0);
-        assert_eq!(euclidean_distance(&[3.0], &[8.0]), 5.0);
+        assert_eq!(Metric::Euclidean.distance(&[0.0], &[5.0]), 5.0);
+        assert_eq!(Metric::Euclidean.distance(&[3.0], &[8.0]), 5.0);
     }
 
     #[test]
     fn test_euclidean_dist_negative_coords() {
-        assert_eq!(euclidean_distance(&[-3.0, -4.0], &[0.0, 0.0]), 5.0);
-        assert_eq!(euclidean_distance(&[-1.0, 2.0], &[2.0, 6.0]), 5.0);
+        assert_eq!(Metric::Euclidean.distance(&[-3.0, -4.0], &[0.0, 0.0]), 5.0);
+        assert_eq!(Metric::Euclidean.distance(&[-1.0, 2.0], &[2.0, 6.0]), 5.0);
     }
 
     #[test]
     fn test_euclidean_dist_3d() {
         let expected = (14.0_f64).sqrt();
-        let actual = euclidean_distance(&[0.0, 0.0, 0.0], &[1.0, 2.0, 3.0]);
+        let actual = Metric::Euclidean.distance(&[0.0, 0.0, 0.0], &[1.0, 2.0, 3.0]);
         assert!(
             (actual - expected).abs() < 1e-12,
             "expected {}, got {}",
