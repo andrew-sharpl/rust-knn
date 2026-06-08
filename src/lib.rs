@@ -33,44 +33,23 @@ impl KnnClassifier {
         }
     }
 
-    /// Fit on data provided as a vector of rows.
+    /// Fit on data in flat row-major layout.
     ///
-    /// Each inner `Vec` is one sample. This method flattens internally
-    /// into a contiguous buffer.
-    pub fn fit(&mut self, data: Vec<Vec<f64>>, labels: Vec<usize>) {
+    /// `data.len()` must equal `n_points * dim`.
+    pub fn fit(&mut self, data: Vec<f64>, dim: usize, labels: Vec<usize>) {
+        assert_eq!(data.len() % dim, 0);
+        let n_points = data.len() / dim;
         assert_eq!(
-            data.len(),
+            n_points,
             labels.len(),
             "data and labels must have the same length"
         );
         assert!(
-            self.k <= data.len(),
-            "k ({}) cannot be larger than training set size ({ })",
+            self.k <= n_points,
+            "k ({}) cannot be larger than training set size ({})",
             self.k,
-            data.len()
+            n_points
         );
-
-        self.dim = data[0].len();
-        self.data = Vec::with_capacity(data.len() * self.dim);
-        for point in data {
-            assert_eq!(
-                point.len(),
-                self.dim,
-                "all rows must have the same dimension"
-            );
-            self.data.extend(point);
-        }
-        self.labels = labels;
-    }
-
-    /// Fit on data already in flat row-major layout.
-    ///
-    /// `data.len()` must equal `n_points * dim`.
-    pub fn fit_flat(&mut self, data: Vec<f64>, dim: usize, labels: Vec<usize>) {
-        assert_eq!(data.len() % dim, 0);
-        let n_points = data.len() / dim;
-        assert_eq!(n_points, labels.len());
-        assert!(self.k <= n_points);
         self.data = data;
         self.dim = dim;
         self.labels = labels;
@@ -79,7 +58,7 @@ impl KnnClassifier {
     /// Predict labels for queries in flat row-major layout.
     ///
     /// Uses `rayon` to parallelize across queries.
-    pub fn predict_flat(&self, queries: &[f64], n_queries: usize, dim: usize) -> Vec<usize> {
+    pub fn predict(&self, queries: &[f64], n_queries: usize, dim: usize) -> Vec<usize> {
         assert_eq!(queries.len(), n_queries * dim);
         assert_eq!(
             dim, self.dim,
@@ -106,31 +85,19 @@ impl KnnClassifier {
             })
             .collect()
     }
+}
 
-    /// Predict labels for queries provided as a vector of rows.
-    pub fn predict(&self, queries: &[Vec<f64>]) -> Vec<usize> {
-        let mut predictions: Vec<usize> = Vec::with_capacity(queries.len());
-
-        for query in queries {
-            let mut distances: Vec<(f64, usize)> = Vec::with_capacity(self.labels.len());
-
-            for i in 0..self.labels.len() {
-                let point = &self.data[i * self.dim..(i + 1) * self.dim];
-                let dist = euclidean_distance(point, query);
-                distances.push((dist, self.labels[i]));
-            }
-
-            distances.select_nth_unstable_by(self.k - 1, |a, b| a.0.total_cmp(&b.0));
-
-            let neighbour_labels: Vec<usize> = distances[..self.k]
-                .iter()
-                .map(|(_, label)| *label)
-                .collect();
-
-            predictions.push(majority_vote(&neighbour_labels));
-        }
-        predictions
+/// Convert row-oriented test data into flat row-major layout.
+#[cfg(test)]
+fn rows_to_flat(rows: &[Vec<f64>]) -> (Vec<f64>, usize) {
+    assert!(!rows.is_empty(), "rows must not be empty");
+    let dim = rows[0].len();
+    let mut flat = Vec::with_capacity(rows.len() * dim);
+    for row in rows {
+        assert_eq!(row.len(), dim, "all rows must have the same dimension");
+        flat.extend(row);
     }
+    (flat, dim)
 }
 
 /// Compute Euclidean distance between two equal-length vectors.
@@ -187,7 +154,8 @@ mod tests {
     #[test]
     fn test_successful_fit() {
         let mut model = KnnClassifier::new(2);
-        model.fit(vec![vec![0.0, 0.0], vec![1.0, 1.0]], vec![0, 1]);
+        let (data, dim) = rows_to_flat(&[vec![0.0, 0.0], vec![1.0, 1.0]]);
+        model.fit(data, dim, vec![0, 1]);
         assert_eq!(model.data, vec![0.0, 0.0, 1.0, 1.0]);
         assert_eq!(model.labels, vec![0, 1]);
     }
@@ -196,20 +164,20 @@ mod tests {
     #[should_panic(expected = "same length")]
     fn test_mismatched_lengths() {
         let mut model = KnnClassifier::new(1);
-        model.fit(vec![vec![0.0]], vec![0, 1]);
+        model.fit(vec![0.0], 1, vec![0, 1]);
     }
 
     #[test]
     fn test_k_equals_data_len() {
         let mut model = KnnClassifier::new(2);
-        model.fit(vec![vec![0.0], vec![1.0]], vec![0, 1]);
+        model.fit(vec![0.0, 1.0], 1, vec![0, 1]);
     }
 
     #[test]
     #[should_panic(expected = "cannot be larger than training set size")]
     fn test_k_larger_than_data() {
         let mut model = KnnClassifier::new(5);
-        model.fit(vec![vec![0.0]], vec![0]);
+        model.fit(vec![0.0], 1, vec![0]);
     }
 
     #[test]

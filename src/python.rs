@@ -48,7 +48,7 @@ impl KnnClassifierPy {
 
         let labels: Vec<usize> = y_view.iter().map(|&label| label as usize).collect();
 
-        self.inner.fit_flat(data, dim, labels);
+        self.inner.fit(data, dim, labels);
         Ok(())
     }
 
@@ -66,7 +66,7 @@ impl KnnClassifierPy {
             queries.extend(row.iter().cloned());
         }
 
-        let predictions = self.inner.predict_flat(&queries, n_queries, dim);
+        let predictions = self.inner.predict(&queries, n_queries, dim);
         Ok(predictions)
     }
 }
