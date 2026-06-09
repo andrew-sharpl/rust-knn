@@ -171,4 +171,29 @@ mod tests {
     fn test_cosine_zero_vector_b_panics() {
         Metric::Cosine.distance(&[1.0, 1.0], &[0.0, 0.0]);
     }
+
+    #[test]
+    fn test_manhattan_mismatched_dimensions() {
+        let result = std::panic::catch_unwind(|| {
+            Metric::Manhattan.distance(&[1.0, 0.0], &[0.0]);
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cosine_mismatched_dimensions() {
+        let result = std::panic::catch_unwind(|| {
+            Metric::Cosine.distance(&[1.0, 0.0], &[0.0]);
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_euclidean_query_as_zero_vector() {
+        // Metric::distance accepts mismatched dimensions at the metric level,
+        // but this tests that a zero-length query vector still triggers
+        // the dimension assert in Metric::distance.
+        Metric::Euclidean.distance(&[], &[1.0, 2.0]);
+    }
 }

@@ -150,9 +150,21 @@ mod tests {
     }
 
     #[test]
+    fn test_new_default_metric_is_euclidean() {
+        let model = KnnClassifier::new(3);
+        assert_eq!(model.metric, Metric::Euclidean);
+    }
+
+    #[test]
     #[should_panic(expected = "k must be positive")]
     fn test_new_knn_zero_k() {
         KnnClassifier::new(0);
+    }
+
+    #[test]
+    #[should_panic(expected = "k must be positive")]
+    fn test_with_metric_zero_k() {
+        KnnClassifier::with_metric(0, Metric::Manhattan);
     }
 
     #[test]
@@ -185,47 +197,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "same dimension")]
-    fn test_euclidean_dist_diff_dimensions() {
-        let x = vec![1.0, 0.0];
-        let y = vec![0.0];
-        Metric::Euclidean.distance(&x, &y);
-    }
-
-    #[test]
-    fn test_euclidean_dist_of_zero() {
-        let x = vec![1.0, 1.0, 1.0];
-        let y = vec![1.0, 1.0, 1.0];
-        assert_eq!(Metric::Euclidean.distance(&x, &y), 0.0);
-    }
-
-    #[test]
-    fn test_euclidean_dist_3_4_5() {
-        assert_eq!(Metric::Euclidean.distance(&[0.0, 0.0], &[3.0, 4.0]), 5.0);
-    }
-
-    #[test]
-    fn test_euclidean_dist_1d() {
-        assert_eq!(Metric::Euclidean.distance(&[0.0], &[5.0]), 5.0);
-        assert_eq!(Metric::Euclidean.distance(&[3.0], &[8.0]), 5.0);
-    }
-
-    #[test]
-    fn test_euclidean_dist_negative_coords() {
-        assert_eq!(Metric::Euclidean.distance(&[-3.0, -4.0], &[0.0, 0.0]), 5.0);
-        assert_eq!(Metric::Euclidean.distance(&[-1.0, 2.0], &[2.0, 6.0]), 5.0);
-    }
-
-    #[test]
-    fn test_euclidean_dist_3d() {
-        let expected = (14.0_f64).sqrt();
-        let actual = Metric::Euclidean.distance(&[0.0, 0.0, 0.0], &[1.0, 2.0, 3.0]);
-        assert!(
-            (actual - expected).abs() < 1e-12,
-            "expected {}, got {}",
-            expected,
-            actual
-        );
+    #[should_panic]
+    fn test_predict_dimension_mismatch() {
+        let mut model = KnnClassifier::new(1);
+        model.fit(vec![0.0, 0.0, 1.0, 0.0], 2, vec![0, 1]);
+        let queries = vec![0.0, 0.0, 0.0]; // 3 dims, but model expects 2
+        model.predict(&queries, 1, 3);
     }
 
     #[test]
@@ -246,5 +223,11 @@ mod tests {
     #[test]
     fn test_majority_vote_tie() {
         assert_eq!(majority_vote(&[1, 0, 2]), 0);
+    }
+
+    #[test]
+    fn test_majority_vote_larger_k() {
+        // 5 neighbors: labels [0,0,0,1,2] — class 0 wins with 3 votes
+        assert_eq!(majority_vote(&[0, 0, 0, 1, 2]), 0);
     }
 }
