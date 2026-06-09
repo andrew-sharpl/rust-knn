@@ -141,93 +141,100 @@ fn majority_vote(neighbor_labels: &[usize]) -> usize {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_successful_new_classifier() {
-        let model = KnnClassifier::new(1);
-        assert_eq!(model.k, 1);
-        assert_eq!(model.data.len(), 0);
-        assert_eq!(model.labels.len(), 0);
+    mod classifier {
+        use super::*;
+
+        #[test]
+        fn new_default_metric_is_euclidean() {
+            let model = KnnClassifier::new(3);
+            assert_eq!(model.metric, Metric::Euclidean);
+        }
+
+        #[test]
+        fn new_sets_k() {
+            let model = KnnClassifier::new(1);
+            assert_eq!(model.k, 1);
+            assert_eq!(model.data.len(), 0);
+            assert_eq!(model.labels.len(), 0);
+        }
+
+        #[test]
+        #[should_panic(expected = "k must be positive")]
+        fn new_zero_k_panics() {
+            KnnClassifier::new(0);
+        }
+
+        #[test]
+        #[should_panic(expected = "k must be positive")]
+        fn with_metric_zero_k_panics() {
+            KnnClassifier::with_metric(0, Metric::Manhattan);
+        }
+
+        #[test]
+        fn fit_stores_data() {
+            let mut model = KnnClassifier::new(2);
+            let (data, dim) = rows_to_flat(&[vec![0.0, 0.0], vec![1.0, 1.0]]);
+            model.fit(data, dim, vec![0, 1]);
+            assert_eq!(model.data, vec![0.0, 0.0, 1.0, 1.0]);
+            assert_eq!(model.labels, vec![0, 1]);
+        }
+
+        #[test]
+        #[should_panic(expected = "same length")]
+        fn fit_mismatched_lengths_panics() {
+            let mut model = KnnClassifier::new(1);
+            model.fit(vec![0.0], 1, vec![0, 1]);
+        }
+
+        #[test]
+        fn fit_k_equals_data_len() {
+            let mut model = KnnClassifier::new(2);
+            model.fit(vec![0.0, 1.0], 1, vec![0, 1]);
+        }
+
+        #[test]
+        #[should_panic(expected = "cannot be larger than training set size")]
+        fn fit_k_larger_than_data_panics() {
+            let mut model = KnnClassifier::new(5);
+            model.fit(vec![0.0], 1, vec![0]);
+        }
+
+        #[test]
+        #[should_panic]
+        fn predict_dimension_mismatch_panics() {
+            let mut model = KnnClassifier::new(1);
+            model.fit(vec![0.0, 0.0, 1.0, 0.0], 2, vec![0, 1]);
+            let queries = vec![0.0, 0.0, 0.0];
+            model.predict(&queries, 1, 3);
+        }
     }
 
-    #[test]
-    fn test_new_default_metric_is_euclidean() {
-        let model = KnnClassifier::new(3);
-        assert_eq!(model.metric, Metric::Euclidean);
-    }
+    mod majority_vote {
+        use super::*;
 
-    #[test]
-    #[should_panic(expected = "k must be positive")]
-    fn test_new_knn_zero_k() {
-        KnnClassifier::new(0);
-    }
+        #[test]
+        fn simple() {
+            assert_eq!(majority_vote(&[0, 0, 1]), 0);
+        }
 
-    #[test]
-    #[should_panic(expected = "k must be positive")]
-    fn test_with_metric_zero_k() {
-        KnnClassifier::with_metric(0, Metric::Manhattan);
-    }
+        #[test]
+        fn unanimous() {
+            assert_eq!(majority_vote(&[1, 1, 1]), 1);
+        }
 
-    #[test]
-    fn test_successful_fit() {
-        let mut model = KnnClassifier::new(2);
-        let (data, dim) = rows_to_flat(&[vec![0.0, 0.0], vec![1.0, 1.0]]);
-        model.fit(data, dim, vec![0, 1]);
-        assert_eq!(model.data, vec![0.0, 0.0, 1.0, 1.0]);
-        assert_eq!(model.labels, vec![0, 1]);
-    }
+        #[test]
+        fn single() {
+            assert_eq!(majority_vote(&[5]), 5);
+        }
 
-    #[test]
-    #[should_panic(expected = "same length")]
-    fn test_mismatched_lengths() {
-        let mut model = KnnClassifier::new(1);
-        model.fit(vec![0.0], 1, vec![0, 1]);
-    }
+        #[test]
+        fn tie_breaks_by_smallest_label() {
+            assert_eq!(majority_vote(&[1, 0, 2]), 0);
+        }
 
-    #[test]
-    fn test_k_equals_data_len() {
-        let mut model = KnnClassifier::new(2);
-        model.fit(vec![0.0, 1.0], 1, vec![0, 1]);
-    }
-
-    #[test]
-    #[should_panic(expected = "cannot be larger than training set size")]
-    fn test_k_larger_than_data() {
-        let mut model = KnnClassifier::new(5);
-        model.fit(vec![0.0], 1, vec![0]);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_predict_dimension_mismatch() {
-        let mut model = KnnClassifier::new(1);
-        model.fit(vec![0.0, 0.0, 1.0, 0.0], 2, vec![0, 1]);
-        let queries = vec![0.0, 0.0, 0.0]; // 3 dims, but model expects 2
-        model.predict(&queries, 1, 3);
-    }
-
-    #[test]
-    fn test_majority_vote_simple() {
-        assert_eq!(majority_vote(&[0, 0, 1]), 0);
-    }
-
-    #[test]
-    fn test_majority_vote_unanimous() {
-        assert_eq!(majority_vote(&[1, 1, 1]), 1);
-    }
-
-    #[test]
-    fn test_majority_vote_single() {
-        assert_eq!(majority_vote(&[5]), 5);
-    }
-
-    #[test]
-    fn test_majority_vote_tie() {
-        assert_eq!(majority_vote(&[1, 0, 2]), 0);
-    }
-
-    #[test]
-    fn test_majority_vote_larger_k() {
-        // 5 neighbors: labels [0,0,0,1,2] — class 0 wins with 3 votes
-        assert_eq!(majority_vote(&[0, 0, 0, 1, 2]), 0);
+        #[test]
+        fn larger_k_multiple_classes() {
+            assert_eq!(majority_vote(&[0, 0, 0, 1, 2]), 0);
+        }
     }
 }

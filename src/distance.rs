@@ -74,126 +74,129 @@ fn cosine(a: &[f64], b: &[f64]) -> f64 {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_euclidean_identical() {
-        assert_eq!(Metric::Euclidean.distance(&[1.0, 2.0], &[1.0, 2.0]), 0.0);
+    mod euclidean {
+        use super::*;
+
+        #[test]
+        fn identical() {
+            assert_eq!(Metric::Euclidean.distance(&[1.0, 2.0], &[1.0, 2.0]), 0.0);
+        }
+
+        #[test]
+        fn three_four_five() {
+            assert_eq!(Metric::Euclidean.distance(&[0.0, 0.0], &[3.0, 4.0]), 5.0);
+        }
+
+        #[test]
+        fn one_dimensional() {
+            assert_eq!(Metric::Euclidean.distance(&[0.0], &[5.0]), 5.0);
+            assert_eq!(Metric::Euclidean.distance(&[3.0], &[8.0]), 5.0);
+        }
+
+        #[test]
+        fn negative_coords() {
+            assert_eq!(Metric::Euclidean.distance(&[-3.0, -4.0], &[0.0, 0.0]), 5.0);
+            assert_eq!(Metric::Euclidean.distance(&[-1.0, 2.0], &[2.0, 6.0]), 5.0);
+        }
+
+        #[test]
+        fn three_d() {
+            let expected = (14.0_f64).sqrt();
+            let actual = Metric::Euclidean.distance(&[0.0, 0.0, 0.0], &[1.0, 2.0, 3.0]);
+            assert!((actual - expected).abs() < 1e-12, "expected {}, got {}", expected, actual);
+        }
+
+        #[test]
+        #[should_panic(expected = "same dimension")]
+        fn mismatched_dimensions() {
+            Metric::Euclidean.distance(&[1.0, 0.0], &[0.0]);
+        }
+
+        #[test]
+        #[should_panic]
+        fn empty_vector() {
+            Metric::Euclidean.distance(&[], &[1.0, 2.0]);
+        }
     }
 
-    #[test]
-    fn test_euclidean_3_4_5() {
-        assert_eq!(Metric::Euclidean.distance(&[0.0, 0.0], &[3.0, 4.0]), 5.0);
-    }
+    mod manhattan {
+        use super::*;
 
-    #[test]
-    fn test_euclidean_1d() {
-        assert_eq!(Metric::Euclidean.distance(&[0.0], &[5.0]), 5.0);
-        assert_eq!(Metric::Euclidean.distance(&[3.0], &[8.0]), 5.0);
-    }
+        #[test]
+        fn axes() {
+            assert_eq!(Metric::Manhattan.distance(&[0.0, 0.0], &[3.0, 4.0]), 7.0);
+        }
 
-    #[test]
-    fn test_euclidean_negative_coords() {
-        assert_eq!(Metric::Euclidean.distance(&[-3.0, -4.0], &[0.0, 0.0]), 5.0);
-        assert_eq!(Metric::Euclidean.distance(&[-1.0, 2.0], &[2.0, 6.0]), 5.0);
-    }
+        #[test]
+        fn negative() {
+            assert_eq!(Metric::Manhattan.distance(&[-1.0], &[2.0]), 3.0);
+        }
 
-    #[test]
-    fn test_euclidean_3d() {
-        let expected = (14.0_f64).sqrt();
-        let actual = Metric::Euclidean.distance(&[0.0, 0.0, 0.0], &[1.0, 2.0, 3.0]);
-        assert!((actual - expected).abs() < 1e-12, "expected {}, got {}", expected, actual);
-    }
+        #[test]
+        fn identical() {
+            assert_eq!(Metric::Manhattan.distance(&[5.0, 10.0], &[5.0, 10.0]), 0.0);
+        }
 
-    #[test]
-    #[should_panic(expected = "same dimension")]
-    fn test_euclidean_mismatched_dimensions() {
-        Metric::Euclidean.distance(&[1.0, 0.0], &[0.0]);
-    }
+        #[test]
+        fn one_dimensional() {
+            assert_eq!(Metric::Manhattan.distance(&[0.0], &[5.0]), 5.0);
+        }
 
-    #[test]
-    fn test_manhattan_axes() {
-        // (0,0) to (3,4) -> |3| + |4| = 7
-        assert_eq!(Metric::Manhattan.distance(&[0.0, 0.0], &[3.0, 4.0]), 7.0);
-    }
+        #[test]
+        fn three_d() {
+            assert_eq!(Metric::Manhattan.distance(&[1.0, 2.0, 3.0], &[4.0, 6.0, 2.0]), 8.0);
+        }
 
-    #[test]
-    fn test_manhattan_negative() {
-        assert_eq!(Metric::Manhattan.distance(&[-1.0], &[2.0]), 3.0);
-    }
-
-    #[test]
-    fn test_manhattan_identical() {
-        assert_eq!(Metric::Manhattan.distance(&[5.0, 10.0], &[5.0, 10.0]), 0.0);
-    }
-
-    #[test]
-    fn test_manhattan_1d() {
-        assert_eq!(Metric::Manhattan.distance(&[0.0], &[5.0]), 5.0);
-    }
-
-    #[test]
-    fn test_manhattan_3d() {
-        // |1-4| + |2-6| + |3-2| = 3 + 4 + 1 = 8
-        assert_eq!(Metric::Manhattan.distance(&[1.0, 2.0, 3.0], &[4.0, 6.0, 2.0]), 8.0);
-    }
-
-    #[test]
-    fn test_cosine_orthogonal() {
-        let d = Metric::Cosine.distance(&[1.0, 0.0], &[0.0, 1.0]);
-        assert!((d - 1.0).abs() < 1e-12);
-    }
-
-    #[test]
-    fn test_cosine_same_direction() {
-        let d = Metric::Cosine.distance(&[1.0, 2.0], &[2.0, 4.0]);
-        assert!(d.abs() < 1e-12);
-    }
-
-    #[test]
-    fn test_cosine_opposite() {
-        let d = Metric::Cosine.distance(&[1.0, 0.0], &[-1.0, 0.0]);
-        assert!((d - 2.0).abs() < 1e-12);
-    }
-
-    #[test]
-    fn test_cosine_identical() {
-        let d = Metric::Cosine.distance(&[3.0, 4.0], &[3.0, 4.0]);
-        assert!(d.abs() < 1e-12);
-    }
-
-    #[test]
-    #[should_panic(expected = "undefined for the zero vector")]
-    fn test_cosine_zero_vector_a_panics() {
-        Metric::Cosine.distance(&[0.0, 0.0], &[1.0, 1.0]);
-    }
-
-    #[test]
-    #[should_panic(expected = "undefined for the zero vector")]
-    fn test_cosine_zero_vector_b_panics() {
-        Metric::Cosine.distance(&[1.0, 1.0], &[0.0, 0.0]);
-    }
-
-    #[test]
-    fn test_manhattan_mismatched_dimensions() {
-        let result = std::panic::catch_unwind(|| {
+        #[test]
+        #[should_panic(expected = "same dimension")]
+        fn mismatched_dimensions() {
             Metric::Manhattan.distance(&[1.0, 0.0], &[0.0]);
-        });
-        assert!(result.is_err());
+        }
     }
 
-    #[test]
-    fn test_cosine_mismatched_dimensions() {
-        let result = std::panic::catch_unwind(|| {
+    mod cosine {
+        use super::*;
+
+        #[test]
+        fn orthogonal() {
+            let d = Metric::Cosine.distance(&[1.0, 0.0], &[0.0, 1.0]);
+            assert!((d - 1.0).abs() < 1e-12);
+        }
+
+        #[test]
+        fn same_direction() {
+            let d = Metric::Cosine.distance(&[1.0, 2.0], &[2.0, 4.0]);
+            assert!(d.abs() < 1e-12);
+        }
+
+        #[test]
+        fn opposite() {
+            let d = Metric::Cosine.distance(&[1.0, 0.0], &[-1.0, 0.0]);
+            assert!((d - 2.0).abs() < 1e-12);
+        }
+
+        #[test]
+        fn identical() {
+            let d = Metric::Cosine.distance(&[3.0, 4.0], &[3.0, 4.0]);
+            assert!(d.abs() < 1e-12);
+        }
+
+        #[test]
+        #[should_panic(expected = "undefined for the zero vector")]
+        fn zero_vector_a_panics() {
+            Metric::Cosine.distance(&[0.0, 0.0], &[1.0, 1.0]);
+        }
+
+        #[test]
+        #[should_panic(expected = "undefined for the zero vector")]
+        fn zero_vector_b_panics() {
+            Metric::Cosine.distance(&[1.0, 1.0], &[0.0, 0.0]);
+        }
+
+        #[test]
+        #[should_panic(expected = "same dimension")]
+        fn mismatched_dimensions() {
             Metric::Cosine.distance(&[1.0, 0.0], &[0.0]);
-        });
-        assert!(result.is_err());
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_euclidean_query_as_zero_vector() {
-        // Metric::distance accepts mismatched dimensions at the metric level,
-        // but this tests that a zero-length query vector still triggers
-        // the dimension assert in Metric::distance.
-        Metric::Euclidean.distance(&[], &[1.0, 2.0]);
+        }
     }
 }
