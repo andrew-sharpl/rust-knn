@@ -4,10 +4,26 @@
 //! [`Metric`] enum.
 
 use core::f64;
+
+/// Distance metric used to compare points.
+///
+/// All metrics expect both input slices to have the same length. Use
+/// [`Metric::distance`] to compute a distance value.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Metric {
+    /// Euclidean distance, also known as L2 distance.
+    ///
+    /// Computes `sqrt(sum((x_i - y_i)^2))`.
     Euclidean,
+    /// Manhattan distance, also known as L1 or city-block distance.
+    ///
+    /// Computes `sum(abs(x_i - y_i))`.
     Manhattan,
+    /// Cosine distance.
+    ///
+    /// Computes `1 - cosine_similarity`, returning `0.0` for identical
+    /// directions, `1.0` for orthogonal vectors, and `2.0` for opposite
+    /// directions.
     Cosine,
 }
 
@@ -18,7 +34,7 @@ impl Metric {
     ///
     /// Panics if `a` and `b` have different lengths.
     ///
-    /// For `Metric::Cosine`, panics if either vector is the zero vector
+    /// For [`Metric::Cosine`], panics if either vector is the zero vector
     /// (cosine distance is undefined).
     pub fn distance(&self, a: &[f64], b: &[f64]) -> f64 {
         assert_eq!(a.len(), b.len(), "points must have the same dimension");
@@ -103,7 +119,12 @@ mod tests {
         fn three_d() {
             let expected = (14.0_f64).sqrt();
             let actual = Metric::Euclidean.distance(&[0.0, 0.0, 0.0], &[1.0, 2.0, 3.0]);
-            assert!((actual - expected).abs() < 1e-12, "expected {}, got {}", expected, actual);
+            assert!(
+                (actual - expected).abs() < 1e-12,
+                "expected {}, got {}",
+                expected,
+                actual
+            );
         }
 
         #[test]
@@ -144,7 +165,10 @@ mod tests {
 
         #[test]
         fn three_d() {
-            assert_eq!(Metric::Manhattan.distance(&[1.0, 2.0, 3.0], &[4.0, 6.0, 2.0]), 8.0);
+            assert_eq!(
+                Metric::Manhattan.distance(&[1.0, 2.0, 3.0], &[4.0, 6.0, 2.0]),
+                8.0
+            );
         }
 
         #[test]

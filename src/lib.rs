@@ -10,21 +10,30 @@ use std::collections::HashMap;
 pub mod distance;
 pub mod python;
 
-/// Brute-force KNN classifier.
+/// Brute-force k-nearest neighbors classifier.
 ///
-/// Data is stored in row-major layout: `[p0f0, p0f1, p1f0, p1f1, ...]`.
+/// The classifier owns its training data. After [`fit`](Self::fit), points are
+/// stored in a flat row-major buffer: `[p0f0, p0f1, p1f0, p1f1, ...]`.
+///
+/// Predictions compare each query to every training point, select the `k`
+/// nearest neighbors, and return the majority label. Ties are resolved by
+/// choosing the smallest label.
 pub struct KnnClassifier {
     data: Vec<f64>,
     dim: usize,
     labels: Vec<usize>,
+    /// Number of neighbors used for each prediction.
     pub k: usize,
+    /// Distance metric used to compare query points with training points.
     pub metric: Metric,
 }
 
 impl KnnClassifier {
-    /// Create a new classifier with the given `k`.
+    /// Create a classifier that uses Euclidean distance.
     ///
-    /// Panics if `k == 0`. Default distance metric is euclidean
+    /// # Panics
+    ///
+    /// Panics if `k == 0`.
     pub fn new(k: usize) -> Self {
         assert!(k > 0, "k must be positive");
         Self {
@@ -36,6 +45,11 @@ impl KnnClassifier {
         }
     }
 
+    /// Create a classifier with an explicit distance metric.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `k == 0`.
     pub fn with_metric(k: usize, metric: Metric) -> Self {
         assert!(k > 0, "k must be positive");
         Self {
@@ -47,9 +61,21 @@ impl KnnClassifier {
         }
     }
 
-    /// Fit on data in flat row-major layout.
+    /// Fit the classifier on training data in flat row-major layout.
     ///
-    /// `data.len()` must equal `n_points * dim`.
+    /// `data` must contain `n_points * dim` values, laid out as contiguous
+    /// rows. For example, three two-dimensional points are represented as
+    /// `[p0x, p0y, p1x, p1y, p2x, p2y]`.
+    ///
+    /// `labels` must contain one class label per training point.
+    ///
+    /// # Panics
+    ///
+    /// Panics if:
+    /// - `dim == 0`
+    /// - `data.len()` is not divisible by `dim`
+    /// - `labels.len()` does not match the number of training points
+    /// - `self.k` is larger than the number of training points
     pub fn fit(&mut self, data: Vec<f64>, dim: usize, labels: Vec<usize>) {
         assert_eq!(data.len() % dim, 0);
         let n_points = data.len() / dim;
@@ -69,9 +95,21 @@ impl KnnClassifier {
         self.labels = labels;
     }
 
-    /// Predict labels for queries in flat row-major layout.
+    /// Predict labels for query points in flat row-major layout.
+    ///
+    /// `queries` must contain `n_queries * dim` values, using the same feature
+    /// dimension passed to [`fit`](Self::fit). The returned vector contains one
+    /// predicted label per query row.
     ///
     /// Uses `rayon` to parallelize across queries.
+    ///
+    /// # Panics
+    ///
+    /// Panics if:
+    /// - `dim == 0`
+    /// - `queries.len() != n_queries * dim`
+    /// - `dim` does not match the fitted training dimension
+    /// - the selected [`Metric`] panics for any training/query pair
     pub fn predict(&self, queries: &[f64], n_queries: usize, dim: usize) -> Vec<usize> {
         assert_eq!(queries.len(), n_queries * dim);
         assert_eq!(
