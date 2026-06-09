@@ -24,7 +24,6 @@ enum MetricPy {
     Cosine,
 }
 
-
 /// Python wrapper around the Rust `KnnClassifier`.
 #[pyclass(name = "KnnClassifier")]
 struct KnnClassifierPy {

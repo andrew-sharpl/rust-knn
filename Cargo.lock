@@ -555,7 +555,6 @@ name = "rust-knn"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "ndarray",
  "numpy",
  "pyo3",
  "rayon",
