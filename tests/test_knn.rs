@@ -9,11 +9,7 @@ fn rows_to_flat(rows: &[Vec<f64>]) -> (Vec<f64>, usize) {
 #[test]
 fn test_knn_basic() {
     let mut model = KnnClassifier::new(1);
-    let (data, dim) = rows_to_flat(&[
-        vec![0.0, 0.0],
-        vec![1.0, 0.0],
-        vec![0.0, 10.0],
-    ]);
+    let (data, dim) = rows_to_flat(&[vec![0.0, 0.0], vec![1.0, 0.0], vec![0.0, 10.0]]);
     model.fit(data, dim, vec![0, 0, 1]);
 
     let (queries, query_dim) = rows_to_flat(&[vec![0.1, 0.0]]);
@@ -28,12 +24,7 @@ fn test_knn_basic() {
 #[test]
 fn test_knn_multiple_queries() {
     let mut model = KnnClassifier::new(2);
-    let (data, dim) = rows_to_flat(&[
-        vec![0.0],
-        vec![1.0],
-        vec![10.0],
-        vec![11.0],
-    ]);
+    let (data, dim) = rows_to_flat(&[vec![0.0], vec![1.0], vec![10.0], vec![11.0]]);
     model.fit(data, dim, vec![0, 0, 1, 1]);
 
     let (queries, query_dim) = rows_to_flat(&[vec![0.4], vec![10.4]]);
@@ -42,7 +33,7 @@ fn test_knn_multiple_queries() {
 }
 
 #[test]
-fn test_knn_k3_ignores_far_points() {
+fn test_knn_k4_ignores_far_points() {
     let mut model = KnnClassifier::new(4);
     let (data, dim) = rows_to_flat(&[
         vec![0.0, 0.0],
@@ -63,10 +54,7 @@ fn test_knn_manhattan() {
     // With Manhattan distance, (0.5, 0) is closer to (0, 0) (dist 0.5)
     // than to (1, 1) (dist |0.5-1| + |0-1| = 1.5).
     let mut model = KnnClassifier::with_metric(1, Metric::Manhattan);
-    let (data, dim) = rows_to_flat(&[
-        vec![0.0, 0.0],
-        vec![1.0, 1.0],
-    ]);
+    let (data, dim) = rows_to_flat(&[vec![0.0, 0.0], vec![1.0, 1.0]]);
     model.fit(data, dim, vec![0, 1]);
 
     let (queries, query_dim) = rows_to_flat(&[vec![0.5, 0.0]]);
@@ -79,10 +67,7 @@ fn test_knn_cosine() {
     // Cosine distance cares about direction, not magnitude.
     // (1, 0) and (100, 0) point the same way → distance ≈ 0 → class 0.
     let mut model = KnnClassifier::with_metric(1, Metric::Cosine);
-    let (data, dim) = rows_to_flat(&[
-        vec![1.0, 0.0],
-        vec![0.0, 1.0],
-    ]);
+    let (data, dim) = rows_to_flat(&[vec![1.0, 0.0], vec![0.0, 1.0]]);
     model.fit(data, dim, vec![0, 1]);
 
     let (queries, query_dim) = rows_to_flat(&[vec![100.0, 0.0]]);

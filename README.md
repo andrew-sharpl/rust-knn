@@ -14,11 +14,19 @@ This is a learning project for exploring Rust's ownership model, type system, an
 
 ## Quick start
 
+### Prerequisites
+
+- Rust toolchain with Cargo
+- Python 3.12 recommended (the package supports Python 3.9+)
+- `uv` for Python dependency and tool management
+
 ### Rust
+
+The Cargo package is `rust-knn`; this dependency alias keeps the Rust import as `knn`.
 
 ```toml
 [dependencies]
-knn = { git = "https://github.com/yourusername/knn" }
+knn = { package = "rust-knn", git = "https://github.com/andrew-sharpl/rust-knn" }
 ```
 
 ```rust
@@ -39,7 +47,8 @@ let mut model = KnnClassifier::with_metric(3, Metric::Manhattan);
 ### Python
 
 ```bash
-uv run maturin develop
+uv sync --group dev
+uv tool run maturin develop
 ```
 
 ```python
@@ -88,32 +97,41 @@ sklearn's brute-force is heavily optimized with hand-tuned SIMD. Matching or bea
 # Rust unit + integration tests
 cargo test
 
-# Python smoke tests
-uv run maturin develop
-uv run python scripts/test_python.py
+# Python tests
+uv tool run maturin develop
+uv run pytest tests/ -v
 
-# Benchmarks (requires sklearn)
-uv run maturin develop
+# Rust benchmarks
+cargo bench
+
+# Python benchmark against sklearn
+uv tool run maturin develop
 uv run python scripts/benchmark.py
 ```
 
-Or use the justfile commands: `just test`, `just bench`, `just dev`.
+Or use the justfile commands: `just test`, `just pytest`, `just bench`, `just bench-py`, `just build`, and `just dev`.
 
 ## Project structure
 
 ```
+Cargo.toml        # Rust package metadata and dependencies
+pyproject.toml    # Python build config and dev dependency group
+justfile          # Common test, build, and benchmark commands
+knn.pyi           # Type stubs for Pyright/IDE autocomplete
 src/
 ├── lib.rs        # KnnClassifier core (flat buffer, rayon, majority vote)
 ├── distance.rs    # Metric enum + Euclidean/Manhattan/Cosine functions
 └── python.rs     # PyO3 wrapper (NumPy → flat buffer → Rust)
 tests/
-└── test_knn.rs   # Integration tests (public API only)
+├── test_knn.rs    # Rust integration tests (public API only)
+└── test_python.py # Python tests and sklearn parity checks
+benches/
+└── bench_knn.rs   # Criterion benchmarks
 scripts/
-├── benchmark.py   # sklearn vs Rust timing comparison
-└── test_python.py # Python smoke tests
-knn.pyi           # Type stubs for Pyright/IDE autocomplete
+└── benchmark.py   # sklearn vs Rust timing comparison
+LICENSE            # MIT license text
 ```
 
 ## License
 
-MIT
+MIT. See `LICENSE`.

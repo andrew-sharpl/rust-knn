@@ -1,6 +1,6 @@
 # run everything
 dev:
-    cargo test --lib && uv tool run maturin develop && uv run python scripts/benchmark.py
+    cargo test && uv tool run maturin develop && uv run pytest tests/ -v && uv run python scripts/benchmark.py
 
 # rust tests
 test:
