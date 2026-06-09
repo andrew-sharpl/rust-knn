@@ -1,7 +1,11 @@
 [package]
-name = "knn"
+name = "rust-knn"
 version = "0.1.0"
 edition = "2024"
+authors = ["Andrew <me@andrewsharp.dev>"]
+description = "A brute-force k-nearest neighbors classifier in Rust with Python bindings"
+license = "MIT"
+repository = "https://github.com/andrew-sharpl/rust-knn"
 
 [lib]
 name = "knn"
