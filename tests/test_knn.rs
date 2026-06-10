@@ -53,7 +53,8 @@ fn test_knn_k4_ignores_far_points() {
 fn test_knn_manhattan() {
     // With Manhattan distance, (0.5, 0) is closer to (0, 0) (dist 0.5)
     // than to (1, 1) (dist |0.5-1| + |0-1| = 1.5).
-    let mut model = KnnClassifier::with_metric(1, Metric::Manhattan);
+    let mut model = KnnClassifier::new(1);
+    model.with_metric(Metric::Manhattan);
     let (data, dim) = rows_to_flat(&[vec![0.0, 0.0], vec![1.0, 1.0]]);
     model.fit(data, dim, vec![0, 1]);
 
@@ -66,7 +67,8 @@ fn test_knn_manhattan() {
 fn test_knn_cosine() {
     // Cosine distance cares about direction, not magnitude.
     // (1, 0) and (100, 0) point the same way → distance ≈ 0 → class 0.
-    let mut model = KnnClassifier::with_metric(1, Metric::Cosine);
+    let mut model = KnnClassifier::new(1);
+    model.with_metric(Metric::Cosine);
     let (data, dim) = rows_to_flat(&[vec![1.0, 0.0], vec![0.0, 1.0]]);
     model.fit(data, dim, vec![0, 1]);
 
@@ -83,6 +85,7 @@ fn test_knn_default_metric_is_euclidean() {
 
 #[test]
 fn test_knn_with_metric_manhattan() {
-    let model = KnnClassifier::with_metric(3, Metric::Manhattan);
+    let mut model = KnnClassifier::new(3);
+    model.with_metric(Metric::Manhattan);
     assert_eq!(model.metric, Metric::Manhattan);
 }

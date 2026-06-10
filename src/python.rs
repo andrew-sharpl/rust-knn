@@ -12,6 +12,7 @@ use pyo3::prelude::*;
 fn knn(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<KnnClassifierPy>()?;
     m.add_class::<MetricPy>()?;
+    m.add_class::<WeightingPy>()?;
     Ok(())
 }
 
@@ -24,6 +25,16 @@ enum MetricPy {
     Cosine,
 }
 
+/// Python wrapper around Rust weighting functions for predict
+#[pyclass(name = "Weighting", eq, eq_int)]
+#[derive(Clone, Copy, PartialEq)]
+enum WeightingPy {
+    Uniform,
+    InverseDistance,
+    SmoothedInverse,
+    Gaussian,
+}
+
 /// Python wrapper around the Rust `KnnClassifier`.
 #[pyclass(name = "KnnClassifier")]
 struct KnnClassifierPy {
@@ -34,19 +45,30 @@ struct KnnClassifierPy {
 impl KnnClassifierPy {
     /// Create a new classifier with `k` neighbors.
     #[new]
-    #[pyo3(signature = (k, metric=None))]
-    fn new(k: usize, metric: Option<MetricPy>) -> Self {
-        let metric = match metric {
-            Some(m) => match m {
+    #[pyo3(signature = (k, metric=None, weighting=None))]
+    fn new(k: usize, metric: Option<MetricPy>, weighting: Option<WeightingPy>) -> Self {
+        let mut inner = crate::KnnClassifier::new(k);
+
+        if let Some(m) = metric {
+            let metric = match m {
                 MetricPy::Euclidean => crate::distance::Metric::Euclidean,
                 MetricPy::Manhattan => crate::distance::Metric::Manhattan,
                 MetricPy::Cosine => crate::distance::Metric::Cosine,
-            },
-            None => crate::distance::Metric::Euclidean,
-        };
-        Self {
-            inner: crate::KnnClassifier::with_metric(k, metric),
+            };
+            inner.with_metric(metric);
         }
+
+        if let Some(w) = weighting {
+            let weighting = match w {
+                WeightingPy::Uniform => crate::weights::Weighting::Uniform,
+                WeightingPy::InverseDistance => crate::weights::Weighting::InverseDistance,
+                WeightingPy::SmoothedInverse => crate::weights::Weighting::SmoothedInverse,
+                WeightingPy::Gaussian => crate::weights::Weighting::Gaussian,
+            };
+            inner.with_weighting(weighting);
+        }
+
+        Self { inner }
     }
 
     /// Fit on 2D training data and 1D labels (NumPy arrays).

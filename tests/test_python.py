@@ -129,3 +129,48 @@ def test_cosine_valid_query():
     )
     predictions = model.predict(np.array([[0.9, 0.1]]))
     assert predictions == [0]
+
+
+@pytest.mark.parametrize("weighting", [
+    knn.Weighting.Uniform,
+    knn.Weighting.InverseDistance,
+    knn.Weighting.SmoothedInverse,
+    knn.Weighting.Gaussian,
+])
+def test_all_weightings_return_prediction(weighting):
+    model = knn.KnnClassifier(3, weighting=weighting)
+    model.fit(
+        np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 10.0]]),
+        np.array([0, 0, 1]),
+    )
+    predictions = model.predict(np.array([[0.1, 0.0]]))
+    assert len(predictions) == 1
+
+
+def test_inverse_distance_matches_sklearn():
+    from sklearn.neighbors import KNeighborsClassifier
+
+    np.random.seed(42)
+    X_train = np.random.rand(200, 10)
+    y_train = np.random.randint(0, 3, size=200)
+    X_test = np.random.rand(50, 10)
+
+    sk_model = KNeighborsClassifier(n_neighbors=3, algorithm="brute", weights="distance")
+    sk_model.fit(X_train, y_train)
+    sk_preds = sk_model.predict(X_test)
+
+    rust_model = knn.KnnClassifier(3, weighting=knn.Weighting.InverseDistance)
+    rust_model.fit(X_train, y_train)
+    rust_preds = rust_model.predict(X_test)
+
+    assert list(sk_preds) == rust_preds
+
+
+def test_inverse_distance_closer_wins():
+    model = knn.KnnClassifier(2, weighting=knn.Weighting.InverseDistance)
+    model.fit(
+        np.array([[0.0], [10.0], [0.1]]),
+        np.array([0, 1, 0]),
+    )
+    predictions = model.predict(np.array([[0.05]]))
+    assert predictions == [0]

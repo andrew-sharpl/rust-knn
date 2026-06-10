@@ -6,7 +6,13 @@ class Metric:
     Manhattan: "Metric"
     Cosine: "Metric"
 
+class Weighting:
+    Uniform: "Weighting"
+    InverseDistance: "Weighting"
+    SmoothedInverse: "Weighting"
+    Gaussian: "Weighting"
+
 class KnnClassifier:
-    def __init__(self, k: int, metric: Optional[Metric] = ...) -> None: ...
+    def __init__(self, k: int, metric: Optional[Metric] = ..., weighting: Optional[Weighting] = ...) -> None: ...
     def fit(self, x: ndarray, y: ndarray) -> None: ...
     def predict(self, x: ndarray) -> List[int]: ...

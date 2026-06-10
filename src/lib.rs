@@ -6,7 +6,9 @@
 use distance::Metric;
 use rayon::prelude::*;
 use std::collections::HashMap;
+use weights::Weighting;
 
+pub mod weights;
 pub mod distance;
 pub mod python;
 
@@ -26,6 +28,8 @@ pub struct KnnClassifier {
     pub k: usize,
     /// Distance metric used to compare query points with training points.
     pub metric: Metric,
+    /// Weighting function applied to distances.
+    pub weighting: Weighting,
 }
 
 impl KnnClassifier {
@@ -42,23 +46,18 @@ impl KnnClassifier {
             labels: Vec::new(),
             k,
             metric: Metric::Euclidean,
+            weighting: Weighting::Uniform,
         }
     }
 
-    /// Create a classifier with an explicit distance metric.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `k == 0`.
-    pub fn with_metric(k: usize, metric: Metric) -> Self {
-        assert!(k > 0, "k must be positive");
-        Self {
-            data: Vec::new(),
-            dim: 0,
-            labels: Vec::new(),
-            k,
-            metric,
-        }
+    pub fn with_metric(&mut self, metric: Metric) -> &mut Self {
+        self.metric = metric;
+        self
+    }
+
+    pub fn with_weighting(&mut self, weighting: Weighting) -> &mut Self {
+        self.weighting = weighting;
+        self
     }
 
     /// Fit the classifier on training data in flat row-major layout.
@@ -128,12 +127,7 @@ impl KnnClassifier {
 
                 distances.select_nth_unstable_by(self.k - 1, |a, b| a.0.total_cmp(&b.0));
 
-                let top_labels: Vec<usize> = distances[..self.k]
-                    .iter()
-                    .map(|(_, label)| *label)
-                    .collect();
-
-                majority_vote(&top_labels)
+                weighted_vote(&distances[..self.k], &self.weighting)
             })
             .collect()
     }
@@ -152,23 +146,26 @@ fn rows_to_flat(rows: &[Vec<f64>]) -> (Vec<f64>, usize) {
     (flat, dim)
 }
 
-/// Given the labels of the k nearest neighbors, return the most common one.
-///
-/// Ties are broken by choosing the smallest label.
-fn majority_vote(neighbor_labels: &[usize]) -> usize {
-    let mut counts = HashMap::new();
+fn weighted_vote(top_k: &[(f64, usize)], weighting: &Weighting) -> usize {
+    let mut totals: HashMap<usize, f64> = HashMap::new();
+    
+    for &(distance, label) in top_k {
+        let weight = weighting.weight(distance);
 
-    for &label in neighbor_labels {
-        *counts.entry(label).or_insert(0) += 1;
+        if weight.is_infinite() {
+            return label;
+        }
+
+        *totals.entry(label).or_insert(0.0) += weight;
     }
 
-    let mut best_label = neighbor_labels[0];
-    let mut best_count = 0;
+    let mut best_label = top_k[0].1;
+    let mut best_total = 0.0;
 
-    for (&label, &count) in &counts {
-        if count > best_count || (count == best_count && label < best_label) {
-            best_count = count;
+    for (&label, &total) in &totals {
+        if total > best_total || (total == best_total && label < best_label) {
             best_label = label;
+            best_total = total;
         }
     }
 
@@ -205,7 +202,7 @@ mod tests {
         #[test]
         #[should_panic(expected = "k must be positive")]
         fn with_metric_zero_k_panics() {
-            KnnClassifier::with_metric(0, Metric::Manhattan);
+            KnnClassifier::new(0).with_metric(Metric::Manhattan);
         }
 
         #[test]
@@ -247,32 +244,61 @@ mod tests {
         }
     }
 
-    mod majority_vote {
+    mod weighted_vote {
         use super::*;
 
         #[test]
-        fn simple() {
-            assert_eq!(majority_vote(&[0, 0, 1]), 0);
+        fn uniform_simple() {
+            let top_k = [(0.1, 0), (0.5, 0), (0.9, 1)];
+            assert_eq!(weighted_vote(&top_k, &Weighting::Uniform), 0);
         }
 
         #[test]
-        fn unanimous() {
-            assert_eq!(majority_vote(&[1, 1, 1]), 1);
+        fn uniform_unanimous() {
+            let top_k = [(1.0, 1), (2.0, 1), (3.0, 1)];
+            assert_eq!(weighted_vote(&top_k, &Weighting::Uniform), 1);
         }
 
         #[test]
-        fn single() {
-            assert_eq!(majority_vote(&[5]), 5);
+        fn uniform_single() {
+            let top_k = [(1.0, 5)];
+            assert_eq!(weighted_vote(&top_k, &Weighting::Uniform), 5);
+        }
+
+        #[test]
+        fn uniform_larger_k_multiple_classes() {
+            let top_k = [(1.0, 0), (2.0, 0), (3.0, 0), (4.0, 1), (5.0, 2)];
+            assert_eq!(weighted_vote(&top_k, &Weighting::Uniform), 0);
+        }
+
+        #[test]
+        fn uniform_single_label() {
+            let top_k = [(1.0, 5), (2.0, 5), (3.0, 5)];
+            assert_eq!(weighted_vote(&top_k, &Weighting::Uniform), 5);
+        }
+
+        #[test]
+        fn inverse_distance_closer_wins() {
+            let top_k = [(0.1, 1), (2.0, 0)];
+            assert_eq!(weighted_vote(&top_k, &Weighting::InverseDistance), 1);
+        }
+
+        #[test]
+        fn inverse_distance_zero_short_circuits() {
+            let top_k = [(0.0, 2), (0.1, 0), (0.1, 1)];
+            assert_eq!(weighted_vote(&top_k, &Weighting::InverseDistance), 2);
+        }
+
+        #[test]
+        fn smoothed_inverse_no_infinity() {
+            let top_k = [(0.0, 1), (1.0, 0), (1.0, 0)];
+            assert_eq!(weighted_vote(&top_k, &Weighting::SmoothedInverse), 0);
         }
 
         #[test]
         fn tie_breaks_by_smallest_label() {
-            assert_eq!(majority_vote(&[1, 0, 2]), 0);
-        }
-
-        #[test]
-        fn larger_k_multiple_classes() {
-            assert_eq!(majority_vote(&[0, 0, 0, 1, 2]), 0);
+            let top_k = [(1.0, 2), (1.0, 0), (1.0, 1)];
+            assert_eq!(weighted_vote(&top_k, &Weighting::Uniform), 0);
         }
     }
 }
