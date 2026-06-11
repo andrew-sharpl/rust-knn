@@ -11,6 +11,7 @@ use weights::Weighting;
 pub mod weights;
 pub mod distance;
 pub mod python;
+pub mod kdtree;
 
 /// Brute-force k-nearest neighbors classifier.
 ///
