@@ -13,6 +13,7 @@ fn knn(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<KnnClassifierPy>()?;
     m.add_class::<MetricPy>()?;
     m.add_class::<WeightingPy>()?;
+    m.add_class::<AlgorithmPy>()?;
     Ok(())
 }
 
@@ -23,6 +24,14 @@ enum MetricPy {
     Euclidean,
     Manhattan,
     Cosine,
+}
+
+/// Python-visible search algorithm enum.
+#[pyclass(name = "Algorithm", eq, eq_int)]
+#[derive(Clone, Copy, PartialEq)]
+enum AlgorithmPy {
+    BruteForce,
+    KdTree,
 }
 
 /// Python wrapper around Rust weighting functions for predict
@@ -45,8 +54,13 @@ struct KnnClassifierPy {
 impl KnnClassifierPy {
     /// Create a new classifier with `k` neighbors.
     #[new]
-    #[pyo3(signature = (k, metric=None, weighting=None))]
-    fn new(k: usize, metric: Option<MetricPy>, weighting: Option<WeightingPy>) -> Self {
+    #[pyo3(signature = (k, metric=None, weighting=None, algorithm=None))]
+    fn new(
+        k: usize,
+        metric: Option<MetricPy>,
+        weighting: Option<WeightingPy>,
+        algorithm: Option<AlgorithmPy>,
+    ) -> Self {
         let mut inner = crate::KnnClassifier::new(k);
 
         if let Some(m) = metric {
@@ -66,6 +80,14 @@ impl KnnClassifierPy {
                 WeightingPy::Gaussian => crate::weights::Weighting::Gaussian,
             };
             inner.with_weighting(weighting);
+        }
+
+        if let Some(a) = algorithm {
+            let algorithm = match a {
+                AlgorithmPy::BruteForce => crate::algorithm::Algorithm::BruteForce,
+                AlgorithmPy::KdTree => crate::algorithm::Algorithm::KdTree,
+            };
+            inner.with_algorithm(algorithm);
         }
 
         Self { inner }

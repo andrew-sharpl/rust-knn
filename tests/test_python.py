@@ -174,3 +174,60 @@ def test_inverse_distance_closer_wins():
     )
     predictions = model.predict(np.array([[0.05]]))
     assert predictions == [0]
+
+
+def test_kdtree_matches_bruteforce():
+    np.random.seed(42)
+    X_train = np.random.rand(200, 10)
+    y_train = np.random.randint(0, 3, size=200)
+    X_test = np.random.rand(50, 10)
+
+    brute_model = knn.KnnClassifier(3)
+    brute_model.fit(X_train, y_train)
+    brute_preds = brute_model.predict(X_test)
+
+    kdtree_model = knn.KnnClassifier(3, algorithm=knn.Algorithm.KdTree)
+    kdtree_model.fit(X_train, y_train)
+    kdtree_preds = kdtree_model.predict(X_test)
+
+    assert brute_preds == kdtree_preds
+
+
+def test_kdtree_manhattan_matches_bruteforce():
+    np.random.seed(42)
+    X_train = np.random.rand(200, 10)
+    y_train = np.random.randint(0, 3, size=200)
+    X_test = np.random.rand(50, 10)
+
+    brute_model = knn.KnnClassifier(3, metric=knn.Metric.Manhattan)
+    brute_model.fit(X_train, y_train)
+    brute_preds = brute_model.predict(X_test)
+
+    kdtree_model = knn.KnnClassifier(
+        3,
+        metric=knn.Metric.Manhattan,
+        algorithm=knn.Algorithm.KdTree,
+    )
+    kdtree_model.fit(X_train, y_train)
+    kdtree_preds = kdtree_model.predict(X_test)
+
+    assert brute_preds == kdtree_preds
+
+
+def test_kdtree_matches_sklearn():
+    from sklearn.neighbors import KNeighborsClassifier
+
+    np.random.seed(42)
+    X_train = np.random.rand(200, 10)
+    y_train = np.random.randint(0, 3, size=200)
+    X_test = np.random.rand(50, 10)
+
+    sk_model = KNeighborsClassifier(n_neighbors=3, algorithm="brute", metric="euclidean")
+    sk_model.fit(X_train, y_train)
+    sk_preds = sk_model.predict(X_test)
+
+    rust_model = knn.KnnClassifier(3, algorithm=knn.Algorithm.KdTree)
+    rust_model.fit(X_train, y_train)
+    rust_preds = rust_model.predict(X_test)
+
+    assert list(sk_preds) == rust_preds

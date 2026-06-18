@@ -12,7 +12,18 @@ class Weighting:
     SmoothedInverse: "Weighting"
     Gaussian: "Weighting"
 
+class Algorithm:
+    BruteForce: "Algorithm"
+    KdTree: "Algorithm"
+
 class KnnClassifier:
-    def __init__(self, k: int, metric: Optional[Metric] = ..., weighting: Optional[Weighting] = ...) -> None: ...
+    def __init__(
+        self,
+        k: int,
+        metric: Optional[Metric] = ...,
+        weighting: Optional[Weighting] = ...,
+        algorithm: Optional[Algorithm] = ...,
+    ) -> None: ...
     def fit(self, x: ndarray, y: ndarray) -> None: ...
     def predict(self, x: ndarray) -> List[int]: ...
+

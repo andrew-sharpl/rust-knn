@@ -22,7 +22,7 @@ impl Weighting {
         match self {
             Weighting::Uniform => 1.0,
             Weighting::InverseDistance => 1.0 / distance,
-            Weighting::SmoothedInverse => 1.0 / (1.0 + distance), 
+            Weighting::SmoothedInverse => 1.0 / (1.0 + distance),
             Weighting::Gaussian => (-distance).exp(),
         }
     }

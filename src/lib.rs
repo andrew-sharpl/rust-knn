@@ -1,26 +1,36 @@
-//! A pure-Rust brute-force k-nearest neighbors classifier.
+//! A k-nearest neighbors classifier with pluggable search algorithms.
 //!
 //! Training data is stored in a single flat `Vec<f64>` for cache-friendly
-//! distance computation. Parallel prediction is supported via `rayon`.
+//! distance computation. Two search algorithms are supported: brute-force
+//! (linear scan) and KD-tree (spatial partitioning). Parallel prediction is
+//! supported via `rayon`.
 
+use algorithm::Algorithm;
 use distance::Metric;
+use kdtree::{KdTree, build_kdtree};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use weights::Weighting;
 
-pub mod weights;
+pub mod algorithm;
+pub mod brute;
 pub mod distance;
-pub mod python;
 pub mod kdtree;
+pub mod python;
+pub mod weights;
 
-/// Brute-force k-nearest neighbors classifier.
+/// k-nearest neighbors classifier.
 ///
 /// The classifier owns its training data. After [`fit`](Self::fit), points are
 /// stored in a flat row-major buffer: `[p0f0, p0f1, p1f0, p1f1, ...]`.
 ///
-/// Predictions compare each query to every training point, select the `k`
-/// nearest neighbors, and return the majority label. Ties are resolved by
-/// choosing the smallest label.
+/// Predictions find the `k` nearest training points to each query, then return
+/// the majority (or distance-weighted) label. Ties are resolved by choosing
+/// the smallest label.
+///
+/// Two search algorithms are available via [`with_algorithm`](Self::with_algorithm):
+/// - [`Algorithm::BruteForce`] — linear scan over all training points
+/// - [`Algorithm::KdTree`] — recursive spatial partitioning for O(log n) average search
 pub struct KnnClassifier {
     data: Vec<f64>,
     dim: usize,
@@ -31,6 +41,10 @@ pub struct KnnClassifier {
     pub metric: Metric,
     /// Weighting function applied to distances.
     pub weighting: Weighting,
+    /// Algorithm for finding neighbors
+    pub algorithm: Algorithm,
+    /// Tree used when algorithm == KdTree
+    tree: Option<KdTree>,
 }
 
 impl KnnClassifier {
@@ -48,6 +62,8 @@ impl KnnClassifier {
             k,
             metric: Metric::Euclidean,
             weighting: Weighting::Uniform,
+            algorithm: Algorithm::BruteForce,
+            tree: None,
         }
     }
 
@@ -58,6 +74,11 @@ impl KnnClassifier {
 
     pub fn with_weighting(&mut self, weighting: Weighting) -> &mut Self {
         self.weighting = weighting;
+        self
+    }
+
+    pub fn with_algorithm(&mut self, algorithm: Algorithm) -> &mut Self {
+        self.algorithm = algorithm;
         self
     }
 
@@ -93,6 +114,10 @@ impl KnnClassifier {
         self.data = data;
         self.dim = dim;
         self.labels = labels;
+
+        if self.algorithm == Algorithm::KdTree {
+            self.tree = Some(build_kdtree(&self.data, dim));
+        }
     }
 
     /// Predict labels for query points in flat row-major layout.
@@ -106,10 +131,10 @@ impl KnnClassifier {
     /// # Panics
     ///
     /// Panics if:
-    /// - `dim == 0`
     /// - `queries.len() != n_queries * dim`
     /// - `dim` does not match the fitted training dimension
     /// - the selected [`Metric`] panics for any training/query pair
+    /// - [`Algorithm::KdTree`] is selected but the tree was not built
     pub fn predict(&self, queries: &[f64], n_queries: usize, dim: usize) -> Vec<usize> {
         assert_eq!(queries.len(), n_queries * dim);
         assert_eq!(
@@ -117,18 +142,45 @@ impl KnnClassifier {
             "query dimension must match training data dimension"
         );
 
+        match self.algorithm {
+            Algorithm::BruteForce => self.predict_brute(queries, dim),
+            Algorithm::KdTree => self.predict_kdtree(queries, dim),
+        }
+    }
+
+    /// Brute-force prediction: linear scan over all training points.
+    fn predict_brute(&self, queries: &[f64], dim: usize) -> Vec<usize> {
         queries
             .par_chunks(dim)
             .map(|query| {
-                let mut distances: Vec<(f64, usize)> = Vec::with_capacity(self.labels.len());
-                for i in 0..self.labels.len() {
-                    let point = &self.data[i * self.dim..(i + 1) * self.dim];
-                    distances.push((self.metric.distance(point, query), self.labels[i]));
-                }
+                let neighbors =
+                    brute::brute_force_search(query, &self.data, self.dim, self.k, &self.metric);
 
-                distances.select_nth_unstable_by(self.k - 1, |a, b| a.0.total_cmp(&b.0));
+                let labeled: Vec<(f64, usize)> = neighbors
+                    .iter()
+                    .map(|&(dist, idx)| (dist, self.labels[idx]))
+                    .collect();
 
-                weighted_vote(&distances[..self.k], &self.weighting)
+                weighted_vote(&labeled, &self.weighting)
+            })
+            .collect()
+    }
+
+    /// KD-tree prediction: recursive spatial search with pruning.
+    fn predict_kdtree(&self, queries: &[f64], dim: usize) -> Vec<usize> {
+        let tree = self.tree.as_ref().expect("KD-tree not built");
+
+        queries
+            .par_chunks(dim)
+            .map(|query| {
+                let neighbors = tree.k_nearest(query, &self.data, self.k, &self.metric);
+
+                let labeled: Vec<(f64, usize)> = neighbors
+                    .iter()
+                    .map(|&(dist, idx)| (dist, self.labels[idx]))
+                    .collect();
+
+                weighted_vote(&labeled, &self.weighting)
             })
             .collect()
     }
@@ -149,7 +201,7 @@ fn rows_to_flat(rows: &[Vec<f64>]) -> (Vec<f64>, usize) {
 
 fn weighted_vote(top_k: &[(f64, usize)], weighting: &Weighting) -> usize {
     let mut totals: HashMap<usize, f64> = HashMap::new();
-    
+
     for &(distance, label) in top_k {
         let weight = weighting.weight(distance);
 
@@ -187,6 +239,12 @@ mod tests {
         }
 
         #[test]
+        fn new_default_algorithm_is_bruteforce() {
+            let model = KnnClassifier::new(3);
+            assert_eq!(model.algorithm, Algorithm::BruteForce);
+        }
+
+        #[test]
         fn new_sets_k() {
             let model = KnnClassifier::new(1);
             assert_eq!(model.k, 1);
@@ -204,6 +262,13 @@ mod tests {
         #[should_panic(expected = "k must be positive")]
         fn with_metric_zero_k_panics() {
             KnnClassifier::new(0).with_metric(Metric::Manhattan);
+        }
+
+        #[test]
+        fn with_algorithm_sets_algorithm() {
+            let mut model = KnnClassifier::new(3);
+            model.with_algorithm(Algorithm::KdTree);
+            assert_eq!(model.algorithm, Algorithm::KdTree);
         }
 
         #[test]
@@ -236,12 +301,89 @@ mod tests {
         }
 
         #[test]
+        fn fit_does_not_build_tree_when_bruteforce() {
+            let mut model = KnnClassifier::new(2);
+            let (data, dim) = rows_to_flat(&[vec![0.0, 0.0], vec![1.0, 1.0]]);
+            model.fit(data, dim, vec![0, 1]);
+            assert!(model.tree.is_none());
+        }
+
+        #[test]
+        fn fit_builds_tree_when_kdtree() {
+            let mut model = KnnClassifier::new(2);
+            model.with_algorithm(Algorithm::KdTree);
+            let (data, dim) = rows_to_flat(&[vec![0.0, 0.0], vec![1.0, 1.0]]);
+            model.fit(data, dim, vec![0, 1]);
+            assert!(model.tree.is_some());
+        }
+
+        #[test]
         #[should_panic]
         fn predict_dimension_mismatch_panics() {
             let mut model = KnnClassifier::new(1);
             model.fit(vec![0.0, 0.0, 1.0, 0.0], 2, vec![0, 1]);
             let queries = vec![0.0, 0.0, 0.0];
             model.predict(&queries, 1, 3);
+        }
+
+        #[test]
+        fn kdtree_predictions_match_bruteforce() {
+            let (data, dim) = rows_to_flat(&[
+                vec![0.0, 0.0],
+                vec![1.0, 0.0],
+                vec![0.0, 10.0],
+                vec![10.0, 10.0],
+                vec![5.0, 5.0],
+            ]);
+            let labels = vec![0, 0, 1, 1, 2];
+            let (queries, query_dim) = rows_to_flat(&[
+                vec![0.1, 0.1],
+                vec![9.0, 9.0],
+                vec![5.0, 5.0],
+                vec![0.0, 9.0],
+            ]);
+
+            let mut brute_model = KnnClassifier::new(3);
+            brute_model.fit(data.clone(), dim, labels.clone());
+            let brute_preds = brute_model.predict(&queries, 4, query_dim);
+
+            let mut kdtree_model = KnnClassifier::new(3);
+            kdtree_model.with_algorithm(Algorithm::KdTree);
+            kdtree_model.fit(data, dim, labels);
+            let kdtree_preds = kdtree_model.predict(&queries, 4, query_dim);
+
+            assert_eq!(brute_preds, kdtree_preds);
+        }
+
+        #[test]
+        fn kdtree_manhattan_matches_bruteforce() {
+            let (data, dim) = rows_to_flat(&[
+                vec![0.0, 0.0],
+                vec![1.0, 0.0],
+                vec![0.0, 10.0],
+                vec![10.0, 10.0],
+                vec![5.0, 5.0],
+            ]);
+            let labels = vec![0, 0, 1, 1, 2];
+            let (queries, query_dim) = rows_to_flat(&[
+                vec![0.1, 0.1],
+                vec![9.0, 9.0],
+                vec![5.0, 5.0],
+                vec![0.0, 9.0],
+            ]);
+
+            let mut brute_model = KnnClassifier::new(3);
+            brute_model.with_metric(Metric::Manhattan);
+            brute_model.fit(data.clone(), dim, labels.clone());
+            let brute_preds = brute_model.predict(&queries, 4, query_dim);
+
+            let mut kdtree_model = KnnClassifier::new(3);
+            kdtree_model.with_metric(Metric::Manhattan);
+            kdtree_model.with_algorithm(Algorithm::KdTree);
+            kdtree_model.fit(data, dim, labels);
+            let kdtree_preds = kdtree_model.predict(&queries, 4, query_dim);
+
+            assert_eq!(brute_preds, kdtree_preds);
         }
     }
 
@@ -294,6 +436,16 @@ mod tests {
         fn smoothed_inverse_no_infinity() {
             let top_k = [(0.0, 1), (1.0, 0), (1.0, 0)];
             assert_eq!(weighted_vote(&top_k, &Weighting::SmoothedInverse), 0);
+        }
+
+        #[test]
+        fn gaussian_closer_wins() {
+            // Gaussian weight = exp(-d). Closer point has higher weight.
+            // (0.1, label 1) -> exp(-0.1) ~ 0.905
+            // (2.0, label 0) -> exp(-2.0) ~ 0.135
+            // Label 1 wins.
+            let top_k = [(0.1, 1), (2.0, 0)];
+            assert_eq!(weighted_vote(&top_k, &Weighting::Gaussian), 1);
         }
 
         #[test]
