@@ -231,3 +231,61 @@ def test_kdtree_matches_sklearn():
     rust_preds = rust_model.predict(X_test)
 
     assert list(sk_preds) == rust_preds
+
+
+def test_kdtree_with_cosine_raises_value_error():
+    model = knn.KnnClassifier(1, metric=knn.Metric.Cosine, algorithm=knn.Algorithm.KdTree)
+    with pytest.raises(ValueError, match="KD-tree pruning is invalid for cosine"):
+        model.fit(
+            np.array([[1.0, 0.0], [0.0, 1.0]]),
+            np.array([0, 1]),
+        )
+
+
+def test_zero_k_raises_value_error():
+    with pytest.raises(ValueError, match="k must be positive"):
+        knn.KnnClassifier(0)
+
+
+def test_k_larger_than_training_set_raises_value_error():
+    model = knn.KnnClassifier(5)
+    with pytest.raises(ValueError, match="cannot be larger than the number of training points"):
+        model.fit(
+            np.array([[0.0], [1.0], [2.0]]),
+            np.array([0, 1, 0]),
+        )
+
+
+def test_label_count_mismatch_raises_value_error():
+    model = knn.KnnClassifier(1)
+    with pytest.raises(ValueError, match="expected 3 labels"):
+        model.fit(
+            np.array([[0.0], [1.0], [2.0]]),
+            np.array([0, 1]),
+        )
+
+
+def test_predict_before_fit_raises_value_error():
+    model = knn.KnnClassifier(1)
+    with pytest.raises(ValueError, match="model has not been fit"):
+        model.predict(np.array([[0.0, 0.0]]))
+
+
+def test_dimension_mismatch_raises_value_error():
+    model = knn.KnnClassifier(1)
+    model.fit(
+        np.array([[0.0, 0.0], [1.0, 1.0]]),
+        np.array([0, 1]),
+    )
+    with pytest.raises(ValueError, match="query dimension .* does not match training dimension"):
+        model.predict(np.array([[0.0, 0.0, 0.0]]))
+
+
+def test_cosine_zero_query_vector_raises_value_error():
+    model = knn.KnnClassifier(1, metric=knn.Metric.Cosine)
+    model.fit(
+        np.array([[1.0, 0.0], [0.0, 1.0]]),
+        np.array([0, 1]),
+    )
+    with pytest.raises(ValueError, match="undefined for the zero vector"):
+        model.predict(np.array([[0.0, 0.0]]))

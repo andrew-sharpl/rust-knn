@@ -97,6 +97,9 @@ impl KnnClassifier {
     /// - `data.len()` is not divisible by `dim`
     /// - `labels.len()` does not match the number of training points
     /// - `self.k` is larger than the number of training points
+    /// - the algorithm is `KdTree` and the metric is `Cosine` (KD-tree pruning
+    ///   is invalid for cosine distance because it does not satisfy the
+    ///   triangle inequality in axis-aligned space)
     pub fn fit(&mut self, data: Vec<f64>, dim: usize, labels: Vec<usize>) {
         assert_eq!(data.len() % dim, 0);
         let n_points = data.len() / dim;
@@ -110,6 +113,10 @@ impl KnnClassifier {
             "k ({}) cannot be larger than training set size ({})",
             self.k,
             n_points
+        );
+        assert!(
+            !(self.algorithm == Algorithm::KdTree && self.metric == Metric::Cosine),
+            "KD-tree pruning is invalid for cosine distance; use Algorithm::BruteForce with Metric::Cosine"
         );
         self.data = data;
         self.dim = dim;
@@ -298,6 +305,32 @@ mod tests {
         fn fit_k_larger_than_data_panics() {
             let mut model = KnnClassifier::new(5);
             model.fit(vec![0.0], 1, vec![0]);
+        }
+
+        #[test]
+        #[should_panic(expected = "KD-tree pruning is invalid for cosine")]
+        fn fit_kdtree_with_cosine_panics() {
+            let mut model = KnnClassifier::new(1);
+            model.with_metric(Metric::Cosine);
+            model.with_algorithm(Algorithm::KdTree);
+            let (data, dim) = rows_to_flat(&[vec![1.0, 0.0], vec![0.0, 1.0]]);
+            model.fit(data, dim, vec![0, 1]);
+        }
+
+        #[test]
+        fn fit_kdtree_with_euclidean_does_not_panic() {
+            let mut model = KnnClassifier::new(1);
+            model.with_algorithm(Algorithm::KdTree);
+            let (data, dim) = rows_to_flat(&[vec![0.0, 0.0], vec![1.0, 1.0]]);
+            model.fit(data, dim, vec![0, 1]);
+        }
+
+        #[test]
+        fn fit_bruteforce_with_cosine_does_not_panic() {
+            let mut model = KnnClassifier::new(1);
+            model.with_metric(Metric::Cosine);
+            let (data, dim) = rows_to_flat(&[vec![1.0, 0.0], vec![0.0, 1.0]]);
+            model.fit(data, dim, vec![0, 1]);
         }
 
         #[test]
