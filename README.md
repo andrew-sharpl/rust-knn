@@ -1,6 +1,6 @@
 # knn
 
-A k-nearest neighbors classifier implemented in Rust with Python bindings.
+A k-nearest neighbors classifier implemented in Rust with optional Python bindings.
 
 This is a learning project for exploring Rust's ownership model, type system, and cross-language interoperability via PyO3. Two search algorithms are supported: brute-force (linear scan) and KD-tree (spatial partitioning).
 
@@ -12,23 +12,16 @@ This is a learning project for exploring Rust's ownership model, type system, an
 - **Parallel prediction:** rayon multi-threading across query points (both algorithms)
 - **Cache-friendly layout:** training data stored as a flat `Vec<f64>` in row-major order
 - **Partial sort:** brute-force uses `select_nth_unstable_by` for O(n) average-time neighbor selection
-- **Python bindings:** NumPy arrays go in, predictions come out — no manual serialization
+- **Optional Python bindings:** enabled via the `python` Cargo feature; NumPy arrays go in, predictions come out
 
 ## Quick start
-
-### Prerequisites
-
-- Rust toolchain with Cargo
-- Python 3.12 recommended (the package supports Python 3.9+)
-- `uv` for Python dependency and tool management
 
 ### Rust
 
 The Cargo package is `rust-knn`; this dependency alias keeps the Rust import as `knn`.
 
-```toml
-[dependencies]
-knn = { package = "rust-knn", git = "https://github.com/andrew-sharpl/rust-knn" }
+```bash
+cargo add rust-knn
 ```
 
 ```rust
@@ -51,6 +44,10 @@ model.with_metric(Metric::Manhattan).with_algorithm(Algorithm::KdTree);
 ```
 
 ### Python
+
+Python bindings are gated behind the `python` Cargo feature. Maturin enables this automatically via `pyproject.toml`, so the standard build commands just work.
+
+**Prerequisites:** Rust toolchain, Python 3.9+, and `uv` for dependency management.
 
 ```bash
 uv sync --group dev
@@ -77,6 +74,15 @@ model = knn.KnnClassifier(3, algorithm=knn.Algorithm.KdTree)
 model = knn.KnnClassifier(3, metric=knn.Metric.Manhattan, algorithm=knn.Algorithm.KdTree)
 ```
 
+Invalid combinations and misuse raise `ValueError` (catchable in Python):
+- `k == 0`
+- `k` larger than the training set
+- label count mismatch
+- `predict()` before `fit()`
+- query dimension mismatch
+- cosine distance on a zero vector
+- `Metric.Cosine` with `Algorithm.KdTree` (pruning is invalid for cosine)
+
 ## Algorithms
 
 | Algorithm | Complexity | When to use |
@@ -84,7 +90,7 @@ model = knn.KnnClassifier(3, metric=knn.Metric.Manhattan, algorithm=knn.Algorith
 | BruteForce | O(n) per query | Small datasets, or when dimensionality is very high |
 | KdTree | O(log n) average per query | Moderate-size datasets (up to ~100k points), low-to-moderate dimensionality |
 
-The KD-tree supports Euclidean and Manhattan metrics. Cosine distance does not satisfy the triangle inequality in axis-aligned space, so KD-tree pruning is incorrect for cosine — use brute-force with cosine.
+The KD-tree supports Euclidean and Manhattan metrics. Cosine distance does not satisfy the triangle inequality in axis-aligned space, so KD-tree pruning is incorrect for cosine — using `Metric.Cosine` with `Algorithm.KdTree` raises a `ValueError` (Python) or panics (Rust) at `fit()` time.
 
 ## Distance metrics
 
@@ -94,7 +100,7 @@ The KD-tree supports Euclidean and Manhattan metrics. Cosine distance does not s
 | Manhattan | Σ\|xᵢ − yᵢ\| | Grid-like data, robust to outliers |
 | Cosine | 1 − (A·B)/(‖A‖‖B‖) | Text/TF-IDF, direction matters more than magnitude |
 
-Cosine distance panics on zero vectors (the denominator is zero, making it undefined).
+Cosine distance is undefined for zero vectors (the denominator is zero). In Rust this panics; in Python it raises `ValueError`.
 
 ## Benchmarks
 
@@ -119,10 +125,13 @@ At 50k training points, the Rust KD-tree is **4.3× faster than sklearn's brute-
 ## Running tests
 
 ```bash
-# Rust unit + integration tests
+# Rust unit + integration tests (no Python feature)
 cargo test
 
-# Python tests
+# Rust tests with Python bindings enabled
+cargo test --features python
+
+# Python tests (requires building the extension first)
 uv tool run maturin develop
 uv run pytest tests/ -v
 
@@ -150,7 +159,7 @@ src/
 ├── kdtree.rs     # KdTree, build_kdtree(), k_nearest() — spatial partitioning
 ├── distance.rs   # Metric enum + Euclidean/Manhattan/Cosine functions
 ├── weights.rs    # Weighting enum + distance-to-weight conversion
-└── python.rs     # PyO3 wrapper (NumPy → flat buffer → Rust)
+└── python.rs     # PyO3 wrapper (NumPy → flat buffer → Rust) — requires `python` feature
 tests/
 ├── test_knn.rs    # Rust integration tests (public API only)
 └── test_python.py # Python tests and sklearn parity checks
