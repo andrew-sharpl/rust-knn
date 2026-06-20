@@ -64,7 +64,9 @@ impl KnnClassifierPy {
         algorithm: Option<AlgorithmPy>,
     ) -> PyResult<Self> {
         if k == 0 {
-            return Err(pyo3::exceptions::PyValueError::new_err("k must be positive"));
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "k must be positive",
+            ));
         }
 
         let mut inner = crate::KnnClassifier::new(k);
@@ -134,7 +136,8 @@ impl KnnClassifierPy {
         if y_view.len() != n_samples {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "expected {} labels (one per training point), got {}",
-                n_samples, y_view.len()
+                n_samples,
+                y_view.len()
             )));
         }
 

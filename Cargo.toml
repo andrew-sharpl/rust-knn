@@ -3,17 +3,23 @@ name = "rust-knn"
 version = "0.1.0"
 edition = "2024"
 authors = ["Andrew <me@andrewsharp.dev>"]
-description = "A brute-force k-nearest neighbors classifier in Rust with Python bindings"
+description = "A k-nearest neighbors classifier with brute-force and KD-tree search, with Python bindings via PyO3."
 license = "MIT"
 repository = "https://github.com/andrew-sharpl/rust-knn"
+keywords = ["knn", "machine-learning", "nearest-neighbor", "kd-tree"]
+categories = ["algorithms", "science"]
 
 [lib]
 name = "knn"
 crate-type = ["rlib", "cdylib"]
 
+[features]
+default = []
+python = ["pyo3/extension-module", "dep:numpy"]
+
 [dependencies]
-pyo3 = { version = "0.23", features = ["extension-module"] }
-numpy = "0.23"
+pyo3 = { version = "0.23", features = [] }
+numpy = { version = "0.23", optional = true }
 rayon = "1.10"
 
 [dev-dependencies]

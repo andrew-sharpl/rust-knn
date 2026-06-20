@@ -16,8 +16,9 @@ pub mod algorithm;
 pub mod brute;
 pub mod distance;
 pub mod kdtree;
-pub mod python;
 pub mod weights;
+#[cfg(feature = "python")]
+pub mod python;
 
 /// k-nearest neighbors classifier.
 ///
