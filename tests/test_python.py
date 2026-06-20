@@ -36,24 +36,29 @@ def test_multiple_queries():
 def test_k4_ignores_far_points():
     model = knn.KnnClassifier(4)
     model.fit(
-        np.array([
-            [0.0, 0.0],
-            [0.1, 0.0],
-            [0.0, 0.1],
-            [100.0, 100.0],
-            [0.0, 10.0],
-        ]),
+        np.array(
+            [
+                [0.0, 0.0],
+                [0.1, 0.0],
+                [0.0, 0.1],
+                [100.0, 100.0],
+                [0.0, 10.0],
+            ]
+        ),
         np.array([0, 0, 0, 0, 1]),
     )
     predictions = model.predict(np.array([[0.05, 0.05]]))
     assert predictions == [0]
 
 
-@pytest.mark.parametrize("metric", [
-    knn.Metric.Euclidean,
-    knn.Metric.Manhattan,
-    knn.Metric.Cosine,
-])
+@pytest.mark.parametrize(
+    "metric",
+    [
+        knn.Metric.Euclidean,
+        knn.Metric.Manhattan,
+        knn.Metric.Cosine,
+    ],
+)
 def test_all_metrics_return_prediction(metric):
     model = knn.KnnClassifier(1, metric=metric)
     model.fit(
@@ -72,7 +77,9 @@ def test_euclidean_matches_sklearn():
     y_train = np.random.randint(0, 3, size=200)
     X_test = np.random.rand(50, 10)
 
-    sk_model = KNeighborsClassifier(n_neighbors=3, algorithm="brute", metric="euclidean")
+    sk_model = KNeighborsClassifier(
+        n_neighbors=3, algorithm="brute", metric="euclidean"
+    )
     sk_model.fit(X_train, y_train)
     sk_preds = sk_model.predict(X_test)
 
@@ -91,7 +98,9 @@ def test_manhattan_matches_sklearn():
     y_train = np.random.randint(0, 3, size=200)
     X_test = np.random.rand(50, 10)
 
-    sk_model = KNeighborsClassifier(n_neighbors=3, algorithm="brute", metric="manhattan")
+    sk_model = KNeighborsClassifier(
+        n_neighbors=3, algorithm="brute", metric="manhattan"
+    )
     sk_model.fit(X_train, y_train)
     sk_preds = sk_model.predict(X_test)
 
@@ -131,12 +140,15 @@ def test_cosine_valid_query():
     assert predictions == [0]
 
 
-@pytest.mark.parametrize("weighting", [
-    knn.Weighting.Uniform,
-    knn.Weighting.InverseDistance,
-    knn.Weighting.SmoothedInverse,
-    knn.Weighting.Gaussian,
-])
+@pytest.mark.parametrize(
+    "weighting",
+    [
+        knn.Weighting.Uniform,
+        knn.Weighting.InverseDistance,
+        knn.Weighting.SmoothedInverse,
+        knn.Weighting.Gaussian,
+    ],
+)
 def test_all_weightings_return_prediction(weighting):
     model = knn.KnnClassifier(3, weighting=weighting)
     model.fit(
@@ -155,7 +167,9 @@ def test_inverse_distance_matches_sklearn():
     y_train = np.random.randint(0, 3, size=200)
     X_test = np.random.rand(50, 10)
 
-    sk_model = KNeighborsClassifier(n_neighbors=3, algorithm="brute", weights="distance")
+    sk_model = KNeighborsClassifier(
+        n_neighbors=3, algorithm="brute", weights="distance"
+    )
     sk_model.fit(X_train, y_train)
     sk_preds = sk_model.predict(X_test)
 
@@ -222,7 +236,9 @@ def test_kdtree_matches_sklearn():
     y_train = np.random.randint(0, 3, size=200)
     X_test = np.random.rand(50, 10)
 
-    sk_model = KNeighborsClassifier(n_neighbors=3, algorithm="brute", metric="euclidean")
+    sk_model = KNeighborsClassifier(
+        n_neighbors=3, algorithm="brute", metric="euclidean"
+    )
     sk_model.fit(X_train, y_train)
     sk_preds = sk_model.predict(X_test)
 
@@ -234,7 +250,9 @@ def test_kdtree_matches_sklearn():
 
 
 def test_kdtree_with_cosine_raises_value_error():
-    model = knn.KnnClassifier(1, metric=knn.Metric.Cosine, algorithm=knn.Algorithm.KdTree)
+    model = knn.KnnClassifier(
+        1, metric=knn.Metric.Cosine, algorithm=knn.Algorithm.KdTree
+    )
     with pytest.raises(ValueError, match="KD-tree pruning is invalid for cosine"):
         model.fit(
             np.array([[1.0, 0.0], [0.0, 1.0]]),
@@ -249,7 +267,9 @@ def test_zero_k_raises_value_error():
 
 def test_k_larger_than_training_set_raises_value_error():
     model = knn.KnnClassifier(5)
-    with pytest.raises(ValueError, match="cannot be larger than the number of training points"):
+    with pytest.raises(
+        ValueError, match="cannot be larger than the number of training points"
+    ):
         model.fit(
             np.array([[0.0], [1.0], [2.0]]),
             np.array([0, 1, 0]),
@@ -277,7 +297,9 @@ def test_dimension_mismatch_raises_value_error():
         np.array([[0.0, 0.0], [1.0, 1.0]]),
         np.array([0, 1]),
     )
-    with pytest.raises(ValueError, match="query dimension .* does not match training dimension"):
+    with pytest.raises(
+        ValueError, match="query dimension .* does not match training dimension"
+    ):
         model.predict(np.array([[0.0, 0.0, 0.0]]))
 
 

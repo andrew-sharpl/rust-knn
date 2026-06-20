@@ -18,7 +18,7 @@ fn knn(m: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 /// Python-visible distance metric enum.
-#[pyclass(name = "Metric", eq, eq_int)]
+#[pyclass(name = "Metric", eq, eq_int, from_py_object)]
 #[derive(Clone, Copy, PartialEq)]
 enum MetricPy {
     Euclidean,
@@ -27,7 +27,7 @@ enum MetricPy {
 }
 
 /// Python-visible search algorithm enum.
-#[pyclass(name = "Algorithm", eq, eq_int)]
+#[pyclass(name = "Algorithm", eq, eq_int, from_py_object)]
 #[derive(Clone, Copy, PartialEq)]
 enum AlgorithmPy {
     BruteForce,
@@ -35,7 +35,7 @@ enum AlgorithmPy {
 }
 
 /// Python wrapper around Rust weighting functions for predict
-#[pyclass(name = "Weighting", eq, eq_int)]
+#[pyclass(name = "Weighting", eq, eq_int, from_py_object)]
 #[derive(Clone, Copy, PartialEq)]
 enum WeightingPy {
     Uniform,
