@@ -1,13 +1,22 @@
 [package]
 name = "rust-knn"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
-authors = ["Andrew <me@andrewsharp.dev>"]
+authors = ["Andrew Sharp <me@andrewsharp.dev>"]
 description = "A k-nearest neighbors classifier with brute-force and KD-tree search, with Python bindings via PyO3."
 license = "MIT"
 repository = "https://github.com/andrew-sharpl/rust-knn"
 keywords = ["knn", "machine-learning", "nearest-neighbor", "kd-tree"]
 categories = ["algorithms", "science"]
+exclude = [
+    "tests/test_python.py",
+    "scripts/",
+    "knn.pyi",
+    "pyproject.toml",
+    "uv.lock",
+    ".python-version",
+    "justfile",
+]
 
 [lib]
 name = "knn"
