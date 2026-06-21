@@ -148,10 +148,6 @@ Or use the justfile commands: `just test`, `just pytest`, `just bench`, `just be
 ## Project structure
 
 ```
-Cargo.toml        # Rust package metadata and dependencies
-pyproject.toml    # Python build config and dev dependency group
-justfile          # Common test, build, and benchmark commands
-knn.pyi           # Type stubs for Pyright/IDE autocomplete
 src/
 ├── lib.rs        # KnnClassifier (dispatch, label mapping, weighted_vote)
 ├── algorithm.rs  # Algorithm enum (BruteForce, KdTree)
@@ -160,14 +156,8 @@ src/
 ├── distance.rs   # Metric enum + Euclidean/Manhattan/Cosine functions
 ├── weights.rs    # Weighting enum + distance-to-weight conversion
 └── python.rs     # PyO3 wrapper (NumPy → flat buffer → Rust) — requires `python` feature
-tests/
-├── test_knn.rs    # Rust integration tests (public API only)
-└── test_python.py # Python tests and sklearn parity checks
 benches/
 └── bench_knn.rs   # Criterion benchmarks (brute vs KD-tree)
-scripts/
-└── benchmark.py   # sklearn vs Rust timing comparison
-LICENSE            # MIT license text
 ```
 
 ## License
