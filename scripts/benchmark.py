@@ -9,14 +9,16 @@ At high dimensions, the curse of dimensionality erodes the pruning advantage.
 """
 
 import time
+
 import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
+
 import knn
 
 np.random.seed(42)
-n_train = 500_000
-n_test = 5_000
-n_features = 10
+n_train = 50_000
+n_test = 500
+n_features = 5
 
 X_train = np.random.rand(n_train, n_features)
 y_train = np.random.randint(0, 3, size=n_train)

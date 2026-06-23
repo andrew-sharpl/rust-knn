@@ -4,6 +4,7 @@
 //! [`Metric`] enum.
 
 use core::f64;
+use wide::f64x4;
 
 /// Distance metric used to compare points.
 ///
@@ -49,16 +50,61 @@ impl Metric {
 
 /// √Σ(xᵢ - yᵢ)² — the straight-line distance.
 fn euclidean(a: &[f64], b: &[f64]) -> f64 {
-    a.iter()
-        .zip(b.iter())
-        .map(|(&x, &y)| (x - y).powi(2))
-        .sum::<f64>()
-        .sqrt()
+    if a.len() < 4 {
+        let sum: f64 = a
+            .iter()
+            .zip(b.iter())
+            .map(|(&x, &y)| {
+                let d = x - y;
+                d * d
+            })
+            .sum();
+        return sum.sqrt();
+    }
+
+    let mut acc = f64x4::splat(0.0);
+
+    for (ac, bc) in a.chunks_exact(4).zip(b.chunks_exact(4)) {
+        let diff = f64x4::from(ac) - f64x4::from(bc);
+        acc += diff * diff;
+    }
+
+    let mut sum = acc.reduce_add();
+    for (&x, &y) in a
+        .chunks_exact(4)
+        .remainder()
+        .iter()
+        .zip(b.chunks_exact(4).remainder().iter())
+    {
+        let d = x - y;
+        sum += d * d;
+    }
+    sum.sqrt()
 }
 
 /// Σ|xᵢ - yᵢ| — the "city block" distance.
 fn manhattan(a: &[f64], b: &[f64]) -> f64 {
-    a.iter().zip(b.iter()).map(|(&x, &y)| (x - y).abs()).sum()
+    if a.len() < 4 {
+        return a.iter().zip(b.iter()).map(|(&x, &y)| (x - y).abs()).sum();
+    }
+    let mut acc = f64x4::splat(0.0);
+
+    for (ac, bc) in a.chunks_exact(4).zip(b.chunks_exact(4)) {
+        let diff = f64x4::from(ac) - f64x4::from(bc);
+        acc += diff.abs();
+    }
+
+    let mut sum = acc.reduce_add();
+    for (&x, &y) in a
+        .chunks_exact(4)
+        .remainder()
+        .iter()
+        .zip(b.chunks_exact(4).remainder().iter())
+    {
+        sum += (x - y).abs();
+    }
+
+    sum
 }
 
 /// 1 - (A·B)/(‖A‖×‖B‖) — measures the angle between vectors.
@@ -138,6 +184,57 @@ mod tests {
         fn empty_vector() {
             Metric::Euclidean.distance(&[], &[1.0, 2.0]);
         }
+
+        #[test]
+        fn four_d_exactly_one_chunk() {
+            assert_eq!(
+                Metric::Euclidean.distance(&[0.0, 0.0, 0.0, 0.0], &[3.0, 4.0, 0.0, 0.0]),
+                5.0
+            );
+        }
+
+        #[test]
+        fn five_d_chunk_plus_one_remainder() {
+            let expected = (9.0 + 16.0 + 25.0_f64).sqrt();
+            let actual =
+                Metric::Euclidean.distance(&[0.0, 0.0, 0.0, 0.0, 0.0], &[3.0, 4.0, 0.0, 0.0, 5.0]);
+            assert!(
+                (actual - expected).abs() < 1e-12,
+                "expected {expected}, got {actual}"
+            );
+        }
+
+        #[test]
+        fn seven_d_chunk_plus_three_remainder() {
+            let expected = (9.0 + 16.0 + 1.0 + 4.0 + 9.0_f64).sqrt();
+            let actual = Metric::Euclidean.distance(
+                &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                &[3.0, 4.0, 0.0, 0.0, 1.0, 2.0, 3.0],
+            );
+            assert!(
+                (actual - expected).abs() < 1e-12,
+                "expected {expected}, got {actual}"
+            );
+        }
+
+        #[test]
+        fn eight_d_two_chunks_no_remainder() {
+            assert_eq!(
+                Metric::Euclidean.distance(
+                    &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    &[3.0, 4.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                ),
+                5.0
+            );
+        }
+
+        #[test]
+        fn four_d_negative_coords() {
+            assert_eq!(
+                Metric::Euclidean.distance(&[-3.0, -4.0, 0.0, 0.0], &[0.0, 0.0, 0.0, 0.0]),
+                5.0
+            );
+        }
     }
 
     mod manhattan {
@@ -175,6 +272,52 @@ mod tests {
         #[should_panic(expected = "same dimension")]
         fn mismatched_dimensions() {
             Metric::Manhattan.distance(&[1.0, 0.0], &[0.0]);
+        }
+
+        #[test]
+        fn four_d_exactly_one_chunk() {
+            assert_eq!(
+                Metric::Manhattan.distance(&[0.0, 0.0, 0.0, 0.0], &[3.0, 4.0, 5.0, 6.0]),
+                18.0
+            );
+        }
+
+        #[test]
+        fn five_d_chunk_plus_one_remainder() {
+            assert_eq!(
+                Metric::Manhattan.distance(&[0.0, 0.0, 0.0, 0.0, 0.0], &[3.0, 4.0, 5.0, 6.0, 7.0]),
+                25.0
+            );
+        }
+
+        #[test]
+        fn seven_d_chunk_plus_three_remainder() {
+            assert_eq!(
+                Metric::Manhattan.distance(
+                    &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    &[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+                ),
+                7.0
+            );
+        }
+
+        #[test]
+        fn eight_d_two_chunks_no_remainder() {
+            assert_eq!(
+                Metric::Manhattan.distance(
+                    &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+                ),
+                36.0
+            );
+        }
+
+        #[test]
+        fn four_d_negative_coords() {
+            assert_eq!(
+                Metric::Manhattan.distance(&[-1.0, -2.0, -3.0, -4.0], &[1.0, 2.0, 3.0, 4.0]),
+                20.0
+            );
         }
     }
 
